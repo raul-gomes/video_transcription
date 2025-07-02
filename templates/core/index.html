@@ -1,0 +1,162 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Upload de Vídeo - Transcrição{% endblock %}
+
+{% block content %}
+
+<!-- Copie aqui todo o conteúdo do body do seu index.html original -->
+<div class="header">
+    <h1><i class="fas fa-video"></i> Transcrição Automática de Vídeos</h1>
+    <p>Faça upload de um vídeo e receba legendas automaticamente</p>
+</div>
+
+<!-- Upload Section -->
+<section id="uploadSection" class="upload-section">
+    <div class="upload-area" id="uploadArea">
+        <div class="upload-content">
+            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+            <h3>Arraste seu vídeo aqui</h3>
+            <p>ou clique para selecionar</p>
+            <p class="file-info">Formatos suportados: MP4, AVI, MOV, MKV, WEBM, FLV, WMV</p>
+        </div>
+        <input type="file" id="fileInput" accept="video/*" style="display: none;">
+    </div>
+
+    <div id="fileSelected" class="file-selected" style="display: none;">
+        <div class="file-info-card">
+            <i class="fas fa-file-video"></i>
+            <div class="file-details">
+                <h4 id="fileName">Nome do arquivo</h4>
+                <p id="fileSize">Tamanho do arquivo</p>
+            </div>
+        </div>
+        <button id="processBtn" class="btn btn--primary btn--full-width btn--lg">
+            <i class="fas fa-play"></i> Processar Vídeo
+        </button>
+    </div>
+</section>
+
+<!-- Progress Section -->
+<section class="progress-section" id="progressSection" style="display: none;">
+    <div class="progress-card">
+        <h3>Processando seu vídeo...</h3>
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text">
+                <span id="progressLabel">Preparando...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+        </div>
+        <div class="progress-steps" id="progressSteps">
+            <div class="step active" data-step="upload">
+                <i class="fas fa-upload"></i>
+                <span>Enviando</span>
+            </div>
+            <div class="step" data-step="extract">
+                <i class="fas fa-music"></i>
+                <span>Extraindo Áudio</span>
+            </div>
+            <div class="step" data-step="transcribe">
+                <i class="fas fa-microphone"></i>
+                <span>Transcrevendo</span>
+            </div>
+            <div class="step" data-step="generate">
+                <i class="fas fa-closed-captioning"></i>
+                <span>Gerando Legendas</span>
+            </div>
+            <div class="step" data-step="finalize">
+                <i class="fas fa-check"></i>
+                <span>Finalizando</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Video Player Section -->
+<section class="player-section" id="playerSection" style="display: none;">
+    <div class="player-card">
+        <h3>Preview do Vídeo com Legendas</h3>
+        <div class="video-container">
+            <video id="videoPlayer" controls>
+                <track kind="subtitles" src="" srclang="pt" label="Português" id="subtitleTrack">
+                Seu navegador não suporta o elemento de vídeo.
+            </video>
+            <div class="video-controls">
+                <button class="btn btn--secondary" id="toggleSubtitles">
+                    <i class="fas fa-closed-captioning"></i> Ativar Legendas
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Download Section -->
+<section class="download-section" id="downloadSection" style="display: none;">
+    <div class="download-card">
+        <h3>Baixar Arquivos Processados</h3>
+        <div class="download-grid">
+            <button class="download-btn" id="downloadVideo" data-type="video">
+                <i class="fas fa-video"></i>
+                <div>
+                    <strong>Vídeo com Legendas</strong>
+                    <small>Arquivo MP4</small>
+                </div>
+            </button>
+            <button class="download-btn" id="downloadSrt" data-type="srt">
+                <i class="fas fa-file-text"></i>
+                <div>
+                    <strong>Arquivo SRT</strong>
+                    <small>Legendas SubRip</small>
+                </div>
+            </button>
+            <button class="download-btn" id="downloadVtt" data-type="vtt">
+                <i class="fas fa-file-code"></i>
+                <div>
+                    <strong>Arquivo VTT</strong>
+                    <small>WebVTT</small>
+                </div>
+            </button>
+            <button class="download-btn" id="downloadTranscript" data-type="transcript">
+                <i class="fas fa-file-alt"></i>
+                <div>
+                    <strong>Transcrição TXT</strong>
+                    <small>Texto puro</small>
+                </div>
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- Reset Section -->
+<section class="reset-section" id="resetSection" style="display: none;">
+    <button class="btn btn--outline btn--full-width" id="resetBtn">
+        <i class="fas fa-plus"></i> Processar Novo Vídeo
+    </button>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+    <p>© 2025 Transcritor de Vídeos - Powered by Whisper AI</p>
+</footer>
+
+
+<!-- Notification -->
+<div class="notification" id="notification" style="display: none;">
+    <div class="notification-content">
+        <i class="fas fa-check-circle"></i>
+        <span id="notificationText">Processamento concluído com sucesso!</span>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- <script>
+    // Adicionar token CSRF para requisições Django
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    document.querySelector('meta[name="csrf-token"]').setAttribute('content', csrftoken);
+</script> -->
+{% endblock %}

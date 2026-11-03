@@ -1,7 +1,6 @@
 from django.contrib import admin
 from .models import TranscriptionJob, SubtitleSegment
 
-# Register your models here.
 @admin.register(TranscriptionJob)
 class TranscriptionJobAdmin(admin.ModelAdmin):
     list_display = ['id', 'status', 'progress_percentage', 'created_at']

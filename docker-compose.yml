@@ -1,17 +1,139 @@
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: video_transcription_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-video_transcription}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-video_transcription}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: video_transcription_redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video_transcription-web:latest
+    container_name: video_transcription_web
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-secret-key-change-me}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-video_transcription}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/video_transcription}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      DB_HOST: db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-1}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    entrypoint: ["bash", "/app/entrypoint.sh", "web"]
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video_transcription-worker:latest
+    container_name: video_transcription_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-secret-key-change-me}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-video_transcription}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/video_transcription}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      DB_HOST: db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-1}
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    entrypoint: ["bash", "/app/entrypoint.sh", "worker"]
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: video_transcription-beat:latest
+    container_name: video_transcription_beat
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-secret-key-change-me}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-video_transcription}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/video_transcription}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      DB_HOST: db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-1}
+    volumes:
+      - .:/app
+    entrypoint: ["bash", "/app/entrypoint.sh", "beat"]
+    restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:
+  media_data:
+  static_data:

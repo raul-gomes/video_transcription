@@ -5,18 +5,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Transcrição de Vídeos{% endblock %}</title>
-    
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <meta name="csrf-token" content="{{ csrf_token }}">
+
+    <!-- Tailwind + fonte (compartilhados por todas as páginas) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50:  '#eff9fa', 100: '#d6f0f3', 200: '#b0e2e8', 300: '#7bccd6',
+                400: '#3fadbd', 500: '#21808d', 600: '#1d7480', 700: '#1a5f6a',
+                800: '#1b4e57', 900: '#1a4149',
+              },
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    {% block head_extra %}{% endblock %}
 </head>
 <body>
-    <div class="container">
-        {% block content %}{% endblock %}
-    </div>
-    <script src="{% static 'js/app.js' %}"></script>
-    {% block extra_js %}{% endblock %}
-
-    
+    {% block content %}{% endblock %}
+    {% block scripts %}{% endblock %}
 </body>
 </html>

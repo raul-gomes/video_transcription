@@ -6,8 +6,4 @@ load_dotenv()
 
 @dataclass
 class Config:
-    """
-    Configuration class for the video transcription application.
-    """
-    # Django settings
     DJANGO_SECRET_KEY: str = os.getenv('DJANGO_SECRET_KEY')

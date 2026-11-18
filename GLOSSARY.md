@@ -20,6 +20,18 @@ _Evite_: chunk, parte, fatia
 Os segundos que um Bloco repete do Bloco anterior para não cortar uma palavra ao meio.
 _Evite_: overlap, margem
 
+**Análise da Mídia**:
+A leitura do arquivo enviado (contêiner, vídeo, Faixas de áudio, legendas embutidas e o que o navegador consegue tocar) feita antes de o Job entrar na fila.
+_Evite_: probe, inspeção, verificação
+
+**Faixa de áudio**:
+Uma das trilhas de som da Mídia, com idioma, codec e canais. Uma Mídia "dual audio" tem duas ou mais.
+_Evite_: stream, trilha, canal (canal é estéreo/5.1)
+
+**Prévia**:
+Cópia da Mídia só para o player do navegador: mesma imagem e a Faixa de áudio escolhida convertida para um formato que o navegador toca.
+_Evite_: preview, versão web, proxy
+
 **Trecho**:
 Uma frase com tempo de início e fim, como o Whisper devolve. É a unidade da legenda e a fonte da verdade do texto.
 _Evite_: segmento, linha, legenda (para um item só)
@@ -33,6 +45,10 @@ O tamanho do Whisper escolhido para o Job (tiny, base, small, medium, large).
 _Evite_: modelo (sozinho, porque confunde com o modelo de LLM)
 
 ## Status do Job
+
+**Aguardando sua decisão**:
+O Job foi enviado e analisado, e espera a pessoa confirmar as escolhas da Análise da Mídia. Ainda não está na fila.
+_Evite_: pendente, rascunho
 
 **Na fila**:
 O Job foi criado e espera um worker livre.

@@ -83,6 +83,9 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Model size used when a job does not choose one: tiny, base, small, medium, large.
 WHISPER_DEFAULT_MODEL = os.environ.get("WHISPER_MODEL", "small")
 
+# Largest accepted upload, in MB.
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "2048"))
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

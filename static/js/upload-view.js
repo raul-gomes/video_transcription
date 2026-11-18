@@ -91,6 +91,8 @@ export function setupUpload(options, onSubmit, notify) {
   submit.addEventListener('click', async () => {
     if (!file) return;
     submit.disabled = true;
+    const label = submit.textContent;
+    submit.textContent = 'Enviando e analisando…';
     try {
       const accepted = await onSubmit(
         file, { language: language.value, model: model.value, device: device.value },
@@ -102,6 +104,7 @@ export function setupUpload(options, onSubmit, notify) {
       }
     } finally {
       submit.disabled = false;
+      submit.replaceChildren(el('i', { class: 'fas fa-play', 'aria-hidden': 'true' }), ` ${label.trim()}`);
     }
   });
 }

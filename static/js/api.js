@@ -53,6 +53,18 @@ export function createJob(file, choices) {
   return request('/api/jobs/', { method: 'POST', body: form });
 }
 
+/**
+ * Confirm the Análise da Mídia decision; the job enters the queue.
+ * @param {string} id
+ * @param {import('./contract.js').Decision} decision
+ * @returns {Promise<Job>}
+ */
+export const confirmJob = (id, decision) => request(`/api/jobs/${encodeURIComponent(id)}/confirm/`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(decision),
+});
+
 /** @param {string} id @returns {Promise<Job>} */
 export const cancelJob = (id) => request(`/api/jobs/${encodeURIComponent(id)}/cancel/`, { method: 'POST' });
 

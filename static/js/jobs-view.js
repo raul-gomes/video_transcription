@@ -17,6 +17,7 @@ import { createDetail } from './job-detail.js';
 
 /**
  * @typedef {Object} JobActions
+ * @property {(job: Job) => void} decide  Reopen the Análise da Mídia modal.
  * @property {(job: Job) => void} cancel
  * @property {(job: Job) => void} retry
  * @property {(job: Job) => void} remove
@@ -187,6 +188,9 @@ function downloads(job) {
  */
 function buttons(job, actions) {
   const list = [];
+  if (job.status === 'awaiting_decision') {
+    list.push(button('Continuar', 'list-check', 'btn--primary', () => actions.decide(job)));
+  }
   if (job.status === 'completed') {
     list.push(el('button', {
       class: 'btn btn--outline btn--sm', type: 'button', disabled: true,

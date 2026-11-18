@@ -24,7 +24,7 @@ Atualizado em 2026-11-18. Fonte da verdade: as migrations em `core/migrations/` 
 | `job_id` | FK → Job, `CASCADE` | Job dono do Trecho. |
 | `start_time`, `end_time` | real | Início e fim em segundos. |
 | `text` | texto | Texto do Trecho. |
-| `confidence` | real, nulo | Confiança (hoje sempre nula; corrigido na Fase 1). |
+| `confidence` | real, nulo | Confiança de 0 a 1, calculada como `exp(avg_logprob)` do Whisper. |
 
 Ordem padrão: `start_time`.
 

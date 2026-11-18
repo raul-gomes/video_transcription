@@ -8,8 +8,8 @@
 | `video_transcription/celery.py` | App Celery. |
 | `core/models.py` | Job e Trecho. |
 | `core/views.py` | Página inicial, upload e progresso. |
-| `core/tasks.py` | Task Celery que roda o pipeline de um Job. |
-| `core/utils.py` | Pipeline: extrair áudio (ffmpeg) → transcrever (Whisper) → gerar Legendas → embutir no vídeo. |
+| `core/tasks.py` | Task Celery que roda o pipeline de um Job e grava qualquer erro no próprio Job. |
+| `core/utils.py` | Cache do modelo Whisper por worker (`get_model`), confiança (`confidence_from_logprob`) e o pipeline: extrair áudio (ffmpeg) → transcrever (Whisper) → gerar Legendas → embutir no vídeo. |
 | `ai_revision/` | Revisão por IA (vazio até a Fase 3). |
 | `templates/core/` | Páginas (template Django). |
 | `static/js/app.js`, `static/css/style.css` | Front sem build. |

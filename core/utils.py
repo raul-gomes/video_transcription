@@ -1,11 +1,49 @@
 import json
+import math
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import whisper
+from django.conf import settings
 from django.core.files import File
 from django.core.files.base import ContentFile
 from loguru import logger
+
+_MODEL_CACHE: dict[str, Any] = {}
+
+
+def clear_model_cache() -> None:
+    """Forget every loaded Whisper model (used by tests and on settings changes)."""
+    _MODEL_CACHE.clear()
+
+
+def get_model(name: str) -> Any:
+    """Return the Whisper model ``name``, loading it only once per worker process.
+
+    Args:
+        name: Whisper model size (tiny, base, small, medium, large).
+
+    Returns:
+        The loaded model.
+    """
+    if name not in _MODEL_CACHE:
+        _MODEL_CACHE[name] = whisper.load_model(name)
+    return _MODEL_CACHE[name]
+
+
+def confidence_from_logprob(avg_logprob: float | None) -> float | None:
+    """Turn Whisper's average token log-probability into a 0..1 confidence.
+
+    Args:
+        avg_logprob: ``avg_logprob`` of a Whisper segment, if present.
+
+    Returns:
+        ``exp(avg_logprob)`` clamped to [0, 1], or None when unavailable.
+    """
+    if avg_logprob is None:
+        return None
+    return min(1.0, max(0.0, math.exp(avg_logprob)))
 
 
 class VideoProcessor:
@@ -106,7 +144,7 @@ class VideoProcessor:
         self.update_progress(60, "Transcribing with Whisper...")
         try:
             logger.info(f"[{self.job.id}] Loading Whisper model...")
-            model = whisper.load_model("medium")
+            model = get_model(settings.WHISPER_DEFAULT_MODEL)
             logger.info(f"[{self.job.id}] Transcribing audio '{self.job.audio_file.path}'")
             result = model.transcribe(self.job.audio_file.path, language="pt")
             from .models import SubtitleSegment
@@ -117,7 +155,7 @@ class VideoProcessor:
                     start_time=segment["start"],
                     end_time=segment["end"],
                     text=segment["text"],
-                    confidence=segment.get("confidence"),
+                    confidence=confidence_from_logprob(segment.get("avg_logprob")),
                 )
             logger.success(f"[{self.job.id}] Transcription completed.")
             return result
@@ -336,7 +374,8 @@ class VideoProcessor:
             logger.info(f"[{self.job.id}] Generating subtitle files...")
             self.generate_subtitle_files()
             logger.info(f"[{self.job.id}] Muxing final video...")
-            self.mux_soft_subtitle()
+            if not self.mux_soft_subtitle():
+                raise Exception("Subtitle embedding failed")
             self.job.status = "completed"
             self.job.progress_percentage = 100
             self.job.current_step = "Processing completed!"

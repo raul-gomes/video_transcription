@@ -217,3 +217,94 @@ def test_media_without_speech_completes_without_subtitled_video(
     assert job.current_step == "Concluído: nenhuma fala encontrada"
     assert not job.final_video
     assert ffmpeg.call_count == 1
+
+
+ANALYSIS_TWO_SUBS = {
+    "subtitles": [{"language": "por", "title": "A"}, {"language": "eng", "title": "B"}]
+}
+
+
+def argv_of(ffmpeg: MagicMock, call: int) -> list[str]:
+    """The argv of the n-th ffmpeg call."""
+    return ffmpeg.call_args_list[call].args[0]
+
+
+def test_preview_copies_picture_and_converts_the_chosen_track(
+    ffmpeg: MagicMock, model: MagicMock
+) -> None:
+    job = make_job("ep.mkv", make_preview=True, audio_stream_index=2, analysis=ANALYSIS_TWO_SUBS)
+    seen: list[str] = []
+    model.loader.side_effect = lambda *a, **k: (
+        seen.append(TranscriptionJob.objects.get(pk=job.pk).preview_file.name) or model
+    )
+
+    VideoProcessor(job).process()
+
+    preview = argv_of(ffmpeg, 0)
+    assert preview[preview.index("-map") + 1] == "0:v:0"
+    assert "0:2" in preview
+    assert preview[preview.index("-c:v") + 1] == "copy"
+    assert preview[preview.index("-c:a") + 1] == "aac"
+    assert preview[preview.index("-ac") + 1] == "2"
+    assert preview[-1].endswith(".mp4")
+    assert seen and seen[0].startswith("previews/")
+    job.refresh_from_db()
+    assert job.status == JobStatus.COMPLETED
+
+
+def test_preview_can_reencode_the_picture(ffmpeg: MagicMock, model: MagicMock) -> None:
+    job = make_job("ep.mkv", make_preview=True, convert_video=True, audio_stream_index=1)
+    VideoProcessor(job).process()
+    preview = argv_of(ffmpeg, 0)
+    assert preview[preview.index("-c:v") + 1] == "libx264"
+
+
+def test_audio_only_preview_is_m4a(ffmpeg: MagicMock, model: MagicMock) -> None:
+    job = make_job("ep.ogg", media_kind="audio", make_preview=True, audio_stream_index=0)
+    VideoProcessor(job).process()
+    preview = argv_of(ffmpeg, 0)
+    assert "-vn" in preview and preview[-1].endswith(".m4a")
+
+
+def test_no_preview_when_not_asked(ffmpeg: MagicMock, model: MagicMock) -> None:
+    job = make_job("ep.mp4", make_preview=False)
+    VideoProcessor(job).process()
+    assert not any(
+        argv[-1].endswith("_preview.mp4") for argv in (c.args[0] for c in ffmpeg.call_args_list)
+    )
+
+
+def test_extraction_uses_the_chosen_track(ffmpeg: MagicMock, model: MagicMock) -> None:
+    job = make_job("ep.mkv", audio_stream_index=2)
+    VideoProcessor(job).process()
+    extract = argv_of(ffmpeg, 0)
+    assert extract[extract.index("-map") + 1] == "0:2"
+
+
+def test_mkv_keeps_every_original_track_and_adds_ours_as_default(
+    ffmpeg: MagicMock, model: MagicMock
+) -> None:
+    job = make_job("ep.mkv", language="en", audio_stream_index=1, analysis=ANALYSIS_TWO_SUBS)
+
+    VideoProcessor(job).process()
+
+    mux = argv_of(ffmpeg, -1)
+    assert mux[-1].endswith("_with_subtitles.mkv")
+    assert ["-map", "0", "-map", "1"] == mux[mux.index("-map") : mux.index("-map") + 4]
+    assert mux[mux.index("-c") + 1] == "copy"
+    assert "-c:s" not in mux
+    assert mux[mux.index("-disposition:s:2") + 1] == "default"
+    assert "language=eng" in mux
+    job.refresh_from_db()
+    assert job.final_video.name.endswith(".mkv")
+
+
+def test_mp4_converts_subtitles_to_mov_text(ffmpeg: MagicMock, model: MagicMock) -> None:
+    job = make_job("aula.mp4", language="pt")
+    VideoProcessor(job).process()
+    mux = argv_of(ffmpeg, -1)
+    assert mux[-1].endswith("_with_subtitles.mp4")
+    assert mux[mux.index("-c:s") + 1] == "mov_text"
+    assert "0:s?" in mux
+    assert mux[mux.index("-disposition:s:0") + 1] == "default"
+    assert "language=por" in mux

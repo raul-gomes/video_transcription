@@ -52,7 +52,7 @@ class TestUpload:
 @pytest.mark.django_db
 class TestProgress:
     def test_unknown_job_is_404(self, client: Client) -> None:
-        response = client.get("/api/progress/00000000-0000-0000-0000-000000000000")
+        response = client.get("/api/progress/00000000-0000-0000-0000-000000000000/")
         assert response.status_code == 404
 
     def test_reports_status_and_files(self, client: Client) -> None:
@@ -60,7 +60,7 @@ class TestProgress:
             video_file="videos/clip.mp4", status="transcribing", progress_percentage=60
         )
 
-        response = client.get(f"/api/progress/{job.id}")
+        response = client.get(f"/api/progress/{job.id}/")
 
         assert response.status_code == 200
         body = response.json()

@@ -75,7 +75,13 @@ DATABASES = {
 
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
-CELERY_TASK_ALWAYS_EAGER = True
+# One job at a time per worker process: never reserve queued jobs while busy (ADR 0002).
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Whisper
+
+# Model size used when a job does not choose one: tiny, base, small, medium, large.
+WHISPER_DEFAULT_MODEL = os.environ.get("WHISPER_MODEL", "small")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

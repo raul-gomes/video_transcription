@@ -17,7 +17,7 @@ As fases planejadas estão em `docs/plano.md`. Aqui ficam problemas conhecidos e
 - [ ] CI só roda quando o repo ficar público (cobrança do GitHub Actions em repo privado).
 
 ## Front
-- [ ] Ícones do Font Awesome vêm de CDN: sem internet a página fica sem ícones. Empacotar no projeto antes de publicar.
+- [x] Ícones do Font Awesome empacotados em `static/vendor/fontawesome/` (antes vinham de CDN). A fonte FKGroteskNeue, carregada de um servidor da Perplexity, foi removida (volta para as fontes do sistema).
 - [ ] Layout em tela estreita (celular) não conferido no navegador.
 
 ## Pipeline

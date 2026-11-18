@@ -12,6 +12,9 @@ wheels/
 .env
 
 db.sqlite3
+data/
+staticfiles/
+.coverage
 
 # Media files
 media/audio/*

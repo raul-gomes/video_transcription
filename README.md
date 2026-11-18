@@ -24,7 +24,7 @@ Abra http://127.0.0.1:8000.
 
 ### Com GPU NVIDIA (opcional)
 
-Com o [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) instalado, a transcrição fica bem mais rápida:
+Com o [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) instalado, a transcrição fica bem mais rápida. A tela de envio deixa escolher CPU ou GPU por arquivo. Com 6 GB de memória de vídeo, use até o modelo `small`; `medium` pede uns 5 GB livres.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build

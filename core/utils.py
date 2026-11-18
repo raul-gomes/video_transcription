@@ -1,10 +1,12 @@
-import subprocess
-import whisper
-from pathlib import Path
-from django.core.files.base import ContentFile
-from django.core.files import File
 import json
+import subprocess
+from pathlib import Path
+
+import whisper
+from django.core.files import File
+from django.core.files.base import ContentFile
 from loguru import logger
+
 
 class VideoProcessor:
     """
@@ -34,7 +36,7 @@ class VideoProcessor:
 
     def update_progress(self, percentage: int, step: str) -> None:
         """
-        Update the job's progress percentage and current step, saving it to the database and logging.
+        Update the job's progress and current step, then save and log it.
 
         Args:
             percentage (int): Progress percentage (0-100).
@@ -61,23 +63,29 @@ class VideoProcessor:
         Example:
             processor.extract_audio()
         """
-        self.update_progress(20, 'Extracting audio...')
+        self.update_progress(20, "Extracting audio...")
         video_path = self.job.video_file.path
         audio_path = f"{video_path}_temp.wav"
         cmd = [
-            "ffmpeg", "-y", "-i", video_path,
-            "-vn", "-acodec", "pcm_s16le",
-            "-ar", "16000", "-ac", "1",
-            audio_path
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            audio_path,
         ]
         logger.info(f"[{self.job.id}] Running command: {' '.join(cmd)}")
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
-            with open(audio_path, 'rb') as audio_file:
-                self.job.audio_file.save(
-                    f"{self.job.id}_audio.wav",
-                    File(audio_file)
-                )
+            # Fixed ffmpeg argv, no shell; paths come from our own storage.
+            subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
+            with open(audio_path, "rb") as audio_file:
+                self.job.audio_file.save(f"{self.job.id}_audio.wav", File(audio_file))
             Path(audio_path).unlink()
             logger.success(f"[{self.job.id}] Audio extracted successfully.")
             return True
@@ -95,20 +103,21 @@ class VideoProcessor:
         Example:
             processor.transcribe_audio()
         """
-        self.update_progress(60, 'Transcribing with Whisper...')
+        self.update_progress(60, "Transcribing with Whisper...")
         try:
             logger.info(f"[{self.job.id}] Loading Whisper model...")
             model = whisper.load_model("medium")
             logger.info(f"[{self.job.id}] Transcribing audio '{self.job.audio_file.path}'")
             result = model.transcribe(self.job.audio_file.path, language="pt")
             from .models import SubtitleSegment
+
             for segment in result["segments"]:
                 SubtitleSegment.objects.create(
                     job=self.job,
                     start_time=segment["start"],
                     end_time=segment["end"],
                     text=segment["text"],
-                    confidence=segment.get("confidence")
+                    confidence=segment.get("confidence"),
                 )
             logger.success(f"[{self.job.id}] Transcription completed.")
             return result
@@ -126,43 +135,45 @@ class VideoProcessor:
         Example:
             processor.generate_subtitle_files()
         """
-        self.update_progress(80, 'Generating subtitle files...')
+        self.update_progress(80, "Generating subtitle files...")
         logger.info(f"[{self.job.id}] Generating subtitle files...")
 
         # Only use segments with non-empty, non-whitespace text
         segments = [seg for seg in self.job.segments.all() if seg.text and seg.text.strip()]
-        logger.info(f"[{self.job.id}] {len(segments)} non-silent segments will be used for subtitles.")
+        logger.info(
+            f"[{self.job.id}] {len(segments)} non-silent segments will be used for subtitles."
+        )
 
         # SRT
         srt_content = self._generate_srt(segments)
-        srt_file = ContentFile(srt_content.encode('utf-8'))
+        srt_file = ContentFile(srt_content.encode("utf-8"))
         self.job.srt_file.save(f"{self.job.id}.srt", srt_file)
         logger.success(f"[{self.job.id}] SRT file generated.")
 
         # VTT
         vtt_content = self._generate_vtt(segments)
-        vtt_file = ContentFile(vtt_content.encode('utf-8'))
+        vtt_file = ContentFile(vtt_content.encode("utf-8"))
         self.job.vtt_file.save(f"{self.job.id}.vtt", vtt_file)
         logger.success(f"[{self.job.id}] VTT file generated.")
 
         # JSON
         json_data = [
             {
-                'start': seg.start_time,
-                'end': seg.end_time,
-                'text': seg.text,
-                'confidence': seg.confidence
+                "start": seg.start_time,
+                "end": seg.end_time,
+                "text": seg.text,
+                "confidence": seg.confidence,
             }
             for seg in segments
         ]
         json_content = json.dumps(json_data, indent=2, ensure_ascii=False)
-        json_file = ContentFile(json_content.encode('utf-8'))
+        json_file = ContentFile(json_content.encode("utf-8"))
         self.job.json_file.save(f"{self.job.id}.json", json_file)
         logger.success(f"[{self.job.id}] JSON file generated.")
 
         # TXT
-        txt_content = '\n'.join([seg.text for seg in segments])
-        txt_file = ContentFile(txt_content.encode('utf-8'))
+        txt_content = "\n".join([seg.text for seg in segments])
+        txt_file = ContentFile(txt_content.encode("utf-8"))
         self.job.transcript_file.save(f"{self.job.id}_transcript.txt", txt_file)
         logger.success(f"[{self.job.id}] TXT transcript generated.")
 
@@ -188,7 +199,7 @@ class VideoProcessor:
             end = self._format_srt_timestamp(seg.end_time)
             srt_lines.append(f"{idx}\n{start} --> {end}\n{seg.text.strip()}\n")
             idx += 1
-        return '\n'.join(srt_lines)
+        return "\n".join(srt_lines)
 
     def _generate_vtt(self, segments) -> str:
         """
@@ -210,7 +221,7 @@ class VideoProcessor:
             start = self._format_vtt_timestamp(seg.start_time)
             end = self._format_vtt_timestamp(seg.end_time)
             vtt_lines.append(f"{start} --> {end}\n{seg.text.strip()}\n")
-        return '\n'.join(vtt_lines)
+        return "\n".join(vtt_lines)
 
     def _format_srt_timestamp(self, seconds: float) -> str:
         """
@@ -262,27 +273,31 @@ class VideoProcessor:
         Example:
             processor.mux_soft_subtitle()
         """
-        self.update_progress(90, 'Muxing final video...')
+        self.update_progress(90, "Muxing final video...")
         video_path = self.job.video_file.path
         srt_path = self.job.srt_file.path
         output_path = f"{video_path}_with_subtitles.mp4"
         cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-i", srt_path,
-            "-c", "copy",
-            "-c:s", "mov_text",
-            "-metadata:s:s:0", "language=por",
-            output_path
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-i",
+            srt_path,
+            "-c",
+            "copy",
+            "-c:s",
+            "mov_text",
+            "-metadata:s:s:0",
+            "language=por",
+            output_path,
         ]
         logger.info(f"[{self.job.id}] Running command: {' '.join(cmd)}")
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
-            with open(output_path, 'rb') as video_file:
-                self.job.final_video.save(
-                    f"{self.job.id}_with_subtitles.mp4",
-                    File(video_file)
-                )
+            # Fixed ffmpeg argv, no shell; paths come from our own storage.
+            subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
+            with open(output_path, "rb") as video_file:
+                self.job.final_video.save(f"{self.job.id}_with_subtitles.mp4", File(video_file))
             Path(output_path).unlink()
             logger.success(f"[{self.job.id}] Final video with soft subtitles muxed.")
             return True
@@ -306,32 +321,33 @@ class VideoProcessor:
             processor.process()
         """
         try:
-            self.job.status = 'extracting'
+            self.job.status = "extracting"
             self.job.save()
             logger.info(f"[{self.job.id}] Starting audio extraction...")
             if not self.extract_audio():
                 raise Exception("Audio extraction failed")
-            self.job.status = 'transcribing'
+            self.job.status = "transcribing"
             self.job.save()
             logger.info(f"[{self.job.id}] Starting audio transcription...")
             if not self.transcribe_audio():
                 raise Exception("Transcription failed")
-            self.job.status = 'generating'
+            self.job.status = "generating"
             self.job.save()
             logger.info(f"[{self.job.id}] Generating subtitle files...")
             self.generate_subtitle_files()
             logger.info(f"[{self.job.id}] Muxing final video...")
             self.mux_soft_subtitle()
-            self.job.status = 'completed'
+            self.job.status = "completed"
             self.job.progress_percentage = 100
-            self.job.current_step = 'Processing completed!'
+            self.job.current_step = "Processing completed!"
             self.job.save()
             logger.success(f"[{self.job.id}] Pipeline completed successfully.")
         except Exception as e:
-            self.job.status = 'failed'
-            self.job.current_step = f'Error: {str(e)}'
+            self.job.status = "failed"
+            self.job.current_step = f"Error: {str(e)}"
             self.job.save()
             logger.error(f"[{self.job.id}] Processing error: {e}")
+
 
 # ------------------------------
 # Example usage:

@@ -21,6 +21,7 @@ from .constants import (
     LANGUAGE_CODES,
     WHISPER_MODEL_NAMES,
 )
+from .media_analysis import AnalysisError, analyze
 from .models import (
     ACTIVE_STATUSES,
     RETRYABLE_STATUSES,
@@ -34,6 +35,7 @@ from .models import (
 from .tasks import process_video_task
 
 GENERATED_FILE_FIELDS = (
+    "preview_file",
     "audio_file",
     "srt_file",
     "vtt_file",
@@ -41,6 +43,7 @@ GENERATED_FILE_FIELDS = (
     "transcript_file",
     "final_video",
 )
+AWAITING_STEP = "Confira a análise do arquivo"
 QUEUED_STEP = "Aguardando a vez"
 CANCELLED_STEP = "Cancelado pela pessoa"
 INTERRUPTED_STEP = "O app foi fechado durante o processamento"
@@ -63,18 +66,33 @@ class JobChoices:
     device: str
 
 
+@dataclass(frozen=True)
+class Decision:
+    """What the person confirmed in the Análise da Mídia modal."""
+
+    audio_track: int
+    language: str
+    model: str
+    device: str
+    preview: bool
+    convert_video: bool
+
+
 def create_job(media: UploadedFile, choices: JobChoices) -> TranscriptionJob:
-    """Validate an upload, store it as a queued job and enqueue it.
+    """Validate and store an upload, analyse it and wait for the person's decision.
+
+    The job does not enter the queue here: it stays ``awaiting_decision`` until
+    ``confirm_job`` (ADR 0007).
 
     Args:
         media: The uploaded video or audio file.
-        choices: Language, Whisper model and device for this job.
+        choices: Language, Whisper model and device picked on the upload card.
 
     Returns:
-        The saved job.
+        The saved job, with its Análise da Mídia.
 
     Raises:
-        JobError: If the file or the choices are not accepted.
+        JobError: If the file or the choices are not accepted, or the file is unusable.
     """
     extension = PurePath(media.name or "").suffix.lower().lstrip(".")
     if extension not in ACCEPTED_EXTENSIONS:
@@ -82,7 +100,7 @@ def create_job(media: UploadedFile, choices: JobChoices) -> TranscriptionJob:
     max_mb = settings.MAX_UPLOAD_MB
     if media.size > max_mb * BYTES_PER_MB:
         raise JobError(f"Arquivo maior que o limite de {max_mb} MB.")
-    _validate_choices(choices)
+    _validate_choices(choices.language, choices.model, choices.device, check_gpu=False)
 
     job = TranscriptionJob(
         original_filename=PurePath(media.name).name,
@@ -90,31 +108,67 @@ def create_job(media: UploadedFile, choices: JobChoices) -> TranscriptionJob:
         language=choices.language,
         model_name=choices.model,
         device=choices.device,
-        status=JobStatus.QUEUED,
-        current_step=QUEUED_STEP,
+        status=JobStatus.AWAITING_DECISION,
+        current_step=AWAITING_STEP,
     )
     job.media_file.save(f"{job.id}.{extension}", media, save=False)
+    try:
+        job.analysis = analyze(job.media_file.path)
+    except AnalysisError as error:
+        job.media_file.delete(save=False)
+        raise JobError(str(error)) from error
     job.save()
-    _enqueue(job)
     return job
 
 
-def _validate_choices(choices: JobChoices) -> None:
-    """Reject unknown options and a GPU the worker does not have.
+def confirm_job(job: TranscriptionJob, decision: Decision) -> None:
+    """Record the person's decision and send the job to the queue.
 
     Args:
-        choices: The options to check.
+        job: A job awaiting a decision.
+        decision: Track, language, model, device and preview choices.
+
+    Raises:
+        JobStateError: If the job is not awaiting a decision.
+        JobError: If the track or the choices are not valid.
+    """
+    if job.status != JobStatus.AWAITING_DECISION:
+        raise JobStateError("Este arquivo já foi confirmado.")
+    tracks = {track["index"] for track in (job.analysis or {}).get("audio_tracks", [])}
+    if decision.audio_track not in tracks:
+        raise JobError("Faixa de áudio não encontrada no arquivo.")
+    _validate_choices(decision.language, decision.model, decision.device, check_gpu=True)
+    job.audio_stream_index = decision.audio_track
+    job.language = decision.language
+    job.model_name = decision.model
+    job.device = decision.device
+    job.make_preview = decision.preview
+    job.convert_video = decision.preview and decision.convert_video
+    job.status = JobStatus.QUEUED
+    job.current_step = QUEUED_STEP
+    job.save()
+    _enqueue(job)
+
+
+def _validate_choices(language: str, model: str, device: str, *, check_gpu: bool) -> None:
+    """Reject unknown options and, when asked, a GPU the worker does not have.
+
+    Args:
+        language: Language code.
+        model: Whisper model size.
+        device: auto, cpu or gpu.
+        check_gpu: Also require a detected GPU when ``device`` is gpu.
 
     Raises:
         JobError: On the first invalid option.
     """
-    if choices.language not in LANGUAGE_CODES:
+    if language not in LANGUAGE_CODES:
         raise JobError("Idioma não suportado.")
-    if choices.model not in WHISPER_MODEL_NAMES:
+    if model not in WHISPER_MODEL_NAMES:
         raise JobError("Modelo do Whisper desconhecido.")
-    if choices.device not in DEVICES:
+    if device not in DEVICES:
         raise JobError("Dispositivo desconhecido.")
-    if choices.device == DEVICE_GPU and not WorkerState.current().gpu_available:
+    if check_gpu and device == DEVICE_GPU and not WorkerState.current().gpu_available:
         raise JobError("GPU indisponível. Inicie o app com o arquivo docker-compose.gpu.yml.")
 
 

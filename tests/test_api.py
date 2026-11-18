@@ -10,7 +10,9 @@ from django.test import Client
 from pytest_django.fixtures import Settings
 
 from core import services
+from core.media_analysis import parse_probe
 from core.models import JobStatus, SubtitleSegment, TranscriptionJob, WorkerState
+from tests.fixtures.probes import DUAL_AUDIO_MKV
 
 pytestmark = pytest.mark.django_db
 
@@ -28,6 +30,7 @@ JOB_KEYS = {
     "created_at",
     "duration_seconds",
     "files",
+    "analysis",
 }
 
 
@@ -47,6 +50,13 @@ def celery(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     revoke = MagicMock()
     monkeypatch.setattr(services.celery_app.control, "revoke", revoke)
     return revoke
+
+
+@pytest.fixture(autouse=True)
+def analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake Análise da Mídia (no ffprobe in tests)."""
+    result = parse_probe(DUAL_AUDIO_MKV, extension="mkv")
+    monkeypatch.setattr(services, "analyze", lambda path: result)
 
 
 @pytest.fixture
@@ -104,6 +114,8 @@ class TestJobs:
         assert item["files"]["media"].startswith("/media/videos/")
         assert item["files"]["srt"].startswith("/media/subtitles/")
         assert item["files"]["video"] is None
+        assert item["files"]["preview"] is None
+        assert item["analysis"] is None
 
     def test_upload_creates_a_queued_job(self, csrf_client: Client) -> None:
         token = csrf_client.get("/").cookies["csrftoken"].value
@@ -116,7 +128,9 @@ class TestJobs:
         )
 
         assert response.status_code == 201, response.content
-        assert response.json()["status"] == "queued"
+        body = response.json()
+        assert body["status"] == "awaiting_decision"
+        assert [t["index"] for t in body["analysis"]["audio_tracks"]] == [1, 2]
         assert TranscriptionJob.objects.get().language == "en"
 
     def test_upload_rule_errors_are_400_with_message(self, client: Client) -> None:
@@ -159,6 +173,44 @@ class TestJobs:
     def test_unknown_job_is_404(self, client: Client) -> None:
         url = "/api/jobs/00000000-0000-0000-0000-000000000000/cancel/"
         assert client.post(url).status_code == 404
+
+
+class TestConfirm:
+    def make_awaiting(self, client: Client) -> str:
+        response = client.post("/api/jobs/", {"media": SimpleUploadedFile("ep.mkv", b"x")})
+        return response.json()["id"]
+
+    def test_confirm_queues_the_job(self, client: Client) -> None:
+        job_id = self.make_awaiting(client)
+
+        response = client.post(
+            f"/api/jobs/{job_id}/confirm/",
+            {"audio_track": 2, "language": "en", "model": "tiny", "device": "cpu",
+             "preview": True, "convert_video": False},
+            content_type="application/json",
+        )  # fmt: skip
+
+        assert response.status_code == 200, response.content
+        assert response.json()["status"] == "queued"
+        job = TranscriptionJob.objects.get(pk=job_id)
+        assert (job.audio_stream_index, job.make_preview) == (2, True)
+
+    def test_invalid_body_is_400(self, client: Client) -> None:
+        job_id = self.make_awaiting(client)
+        response = client.post(
+            f"/api/jobs/{job_id}/confirm/", {"audio_track": "x"}, content_type="application/json"
+        )
+        assert response.status_code == 400
+
+    def test_confirm_twice_is_409(self, client: Client) -> None:
+        job = make_job(JobStatus.QUEUED)
+        response = client.post(
+            f"/api/jobs/{job.id}/confirm/",
+            {"audio_track": 1, "language": "pt", "model": "small", "device": "auto",
+             "preview": False, "convert_video": False},
+            content_type="application/json",
+        )  # fmt: skip
+        assert response.status_code == 409
 
 
 class TestSegments:

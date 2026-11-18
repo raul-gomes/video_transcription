@@ -12,8 +12,8 @@ from . import services
 from .constants import ACCEPTED_EXTENSIONS, DEFAULT_LANGUAGE, LANGUAGES, WHISPER_MODELS
 from .models import TranscriptionJob, WorkerState
 from .permissions import CsrfProtected
-from .serializers import JobSerializer, SegmentSerializer, UploadSerializer
-from .services import JobChoices, JobError, JobStateError
+from .serializers import DecisionSerializer, JobSerializer, SegmentSerializer, UploadSerializer
+from .services import Decision, JobChoices, JobError, JobStateError
 
 
 def index(request: HttpRequest) -> HttpResponse:
@@ -105,6 +105,25 @@ class JobDetailView(BaseApiView):
         except JobError as error:
             return _error(error)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class JobConfirmView(BaseApiView):
+    """Confirm the Análise da Mídia decision and queue the job."""
+
+    def post(self, request: Request, job_id: str) -> Response:
+        """Record track, language, model, device and preview; return the queued job."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
+        form = DecisionSerializer(data=request.data)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Decisão inválida.", "fields": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            services.confirm_job(job, Decision(**form.validated_data))
+        except JobError as error:
+            return _error(error)
+        return Response(JobSerializer(job).data)
 
 
 class JobCancelView(BaseApiView):

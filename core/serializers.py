@@ -8,6 +8,7 @@ from .models import JobStatus, SubtitleSegment, TranscriptionJob
 
 FILE_FIELDS = {
     "media": "media_file",
+    "preview": "preview_file",
     "video": "final_video",
     "srt": "srt_file",
     "vtt": "vtt_file",
@@ -54,6 +55,7 @@ class JobSerializer(serializers.ModelSerializer):
             "created_at",
             "duration_seconds",
             "files",
+            "analysis",
         )
         read_only_fields = fields
 
@@ -93,3 +95,14 @@ class UploadSerializer(serializers.Serializer):
     language = serializers.CharField(default=DEFAULT_LANGUAGE, max_length=10)
     model = serializers.CharField(required=False, max_length=20)
     device = serializers.CharField(default=DEVICE_AUTO, max_length=10)
+
+
+class DecisionSerializer(serializers.Serializer):
+    """Body of POST /api/jobs/<id>/confirm/ (the Análise da Mídia modal)."""
+
+    audio_track = serializers.IntegerField(min_value=0)
+    language = serializers.CharField(max_length=10)
+    model = serializers.CharField(max_length=20)
+    device = serializers.CharField(max_length=10)
+    preview = serializers.BooleanField()
+    convert_video = serializers.BooleanField()

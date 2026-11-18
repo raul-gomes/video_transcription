@@ -10,7 +10,9 @@ from .constants import DEFAULT_LANGUAGE, DEVICE_AUTO
 class JobStatus(models.TextChoices):
     """Lifecycle of a Job. Labels are the pt-BR text shown on the page."""
 
+    AWAITING_DECISION = "awaiting_decision", "Aguardando sua decisão"
     QUEUED = "queued", "Na fila"
+    PREPARING_PREVIEW = "preparing_preview", "Preparando prévia"
     DOWNLOADING_MODEL = "downloading_model", "Baixando modelo…"
     EXTRACTING = "extracting", "Extraindo áudio"
     TRANSCRIBING = "transcribing", "Transcrevendo"
@@ -25,6 +27,7 @@ class JobStatus(models.TextChoices):
 ACTIVE_STATUSES = frozenset(
     {
         JobStatus.QUEUED,
+        JobStatus.PREPARING_PREVIEW,
         JobStatus.DOWNLOADING_MODEL,
         JobStatus.EXTRACTING,
         JobStatus.TRANSCRIBING,
@@ -55,11 +58,20 @@ class TranscriptionJob(models.Model):
     model_name = models.CharField(max_length=20, default="small")
     device = models.CharField(max_length=10, default=DEVICE_AUTO)
 
-    status = models.CharField(max_length=20, choices=JobStatus.choices, default=JobStatus.QUEUED)
+    status = models.CharField(
+        max_length=20, choices=JobStatus.choices, default=JobStatus.AWAITING_DECISION
+    )
     progress_percentage = models.IntegerField(default=0)
     current_step = models.CharField(max_length=100, blank=True)
     error_message = models.TextField(blank=True)
     celery_task_id = models.CharField(max_length=64, blank=True)
+
+    # Análise da Mídia and the person's decision (ADR 0007)
+    analysis = models.JSONField(null=True, blank=True)
+    audio_stream_index = models.IntegerField(null=True, blank=True)
+    make_preview = models.BooleanField(default=False)
+    convert_video = models.BooleanField(default=False)
+    preview_file = models.FileField(upload_to="previews/", blank=True)
 
     # Generated files
     audio_file = models.FileField(upload_to="audio/", blank=True)

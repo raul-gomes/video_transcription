@@ -25,7 +25,7 @@ import { el, formatDuration } from './dom.js';
 export function createDetail(job, loadSegments) {
   const isVideo = job.media_kind === 'video';
   const player = /** @type {HTMLMediaElement} */ (el(isVideo ? 'video' : 'audio', {
-    class: 'job-detail__player', controls: true, preload: 'metadata', src: job.files.media,
+    class: 'job-detail__player', controls: true, preload: 'metadata', src: job.files.preview || job.files.media,
   }));
   const list = el('ol', { class: 'transcript', 'aria-label': 'Transcrição' });
   const status = el('p', { class: 'transcript__status' });
@@ -33,6 +33,7 @@ export function createDetail(job, loadSegments) {
   const rows = [];
   let lastStart = -1;
   let trackSrc = null;
+  let usingPreview = Boolean(job.files.preview);
 
   const element = el('div', { class: 'job-detail' }, [
     el('div', { class: 'job-detail__media' }, [player]),
@@ -67,6 +68,8 @@ export function createDetail(job, loadSegments) {
 
   /** @param {Job} current */
   const describe = (current) => {
+    if (current.status === 'awaiting_decision') return 'Confirme a análise do arquivo para começar.';
+    if (current.status === 'preparing_preview') return 'Preparando a prévia; o som aparece quando ela ficar pronta.';
     if (current.status === 'queued') return 'A transcrição começa quando chegar a vez deste arquivo.';
     if (current.status === 'downloading_model') return 'Baixando o modelo; o texto aparece logo em seguida.';
     if (ACTIVE_STATUSES.has(current.status)) return 'Transcrevendo… o texto aparece aqui conforme sai.';
@@ -77,6 +80,13 @@ export function createDetail(job, loadSegments) {
 
   /** @param {Job} current */
   const update = async (current) => {
+    if (current.files.preview && !usingPreview) {
+      // The Prévia just became ready: switch the player to it, keeping the position.
+      usingPreview = true;
+      const at = player.currentTime;
+      player.src = current.files.preview;
+      player.addEventListener('loadedmetadata', () => { player.currentTime = at; }, { once: true });
+    }
     const fresh = await loadSegments(current.id, lastStart);
     fresh.forEach(addRow);
     if (current.files.vtt && current.files.vtt !== trackSrc && isVideo) {

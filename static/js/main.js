@@ -1,6 +1,7 @@
 /** Page entry point: loads options, renders the history and polls for updates. */
 
 import { POLL_INTERVAL_MS } from './contract.js';
+import { openAnalysis } from './analysis-dialog.js';
 import { createJobsView } from './jobs-view.js';
 import * as api from './api.js';
 import { ApiError } from './api.js';
@@ -64,6 +65,23 @@ async function attempt(action, success, tone = 'success') {
   return ok;
 }
 
+/**
+ * Show the Análise da Mídia modal and confirm the decision.
+ * @param {Job} job  A job awaiting a decision.
+ * @param {import('./contract.js').Options} options
+ * @param {{language: string, model: string, device: string}} initial
+ * @returns {Promise<boolean>} True when the job was sent to the queue.
+ */
+async function decide(job, options, initial) {
+  const decision = await openAnalysis(job, options, initial);
+  if (!decision) {
+    notify('Tudo bem: o arquivo fica aguardando sua decisão na lista.', 'warning');
+    await refresh();
+    return false;
+  }
+  return attempt(() => api.confirmJob(job.id, decision), 'Na fila! A transcrição começa assim que houver vez.');
+}
+
 /** Fetch and render the history. */
 async function refresh() {
   try {
@@ -77,6 +95,7 @@ async function start() {
   const options = await api.getOptions();
   const languageLabels = Object.fromEntries(options.languages.map((item) => [item.code, item.label]));
   jobsView = createJobsView(jobsContainer, languageLabels, {
+    decide: (job) => decide(job, options, { language: job.language, model: job.model, device: job.device }),
     cancel: (job) => attempt(() => api.cancelJob(job.id), 'Processamento cancelado.', 'warning'),
     retry: (job) => attempt(() => api.retryJob(job.id), 'Enviado de volta para a fila.'),
     remove: async (job) => {
@@ -87,10 +106,18 @@ async function start() {
   });
   setupUpload(
     options,
-    (file, choices) => attempt(
-      () => api.createJob(file, choices),
-      'Enviado! O processamento começa assim que houver vez.',
-    ),
+    async (file, choices) => {
+      let job;
+      try {
+        job = await api.createJob(file, choices);
+      } catch (error) {
+        notify(error instanceof ApiError ? error.message : 'Não foi possível enviar o arquivo.', 'error');
+        return false;
+      }
+      await refresh();
+      await decide(job, options, choices);
+      return true;
+    },
     notify,
   );
   await refresh();

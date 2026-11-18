@@ -10,7 +10,7 @@ import os
 import subprocess
 import sys
 import wave
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import whisper
@@ -21,6 +21,7 @@ from loguru import logger
 from .constants import AUTO_LANGUAGE, DEVICE_CPU, DEVICE_GPU
 from .models import ACTIVE_STATUSES, JobStatus, MediaKind, SubtitleSegment, TranscriptionJob
 
+PROGRESS_PREVIEW = 3
 PROGRESS_DOWNLOAD = 5
 PROGRESS_EXTRACT = 20
 PROGRESS_TRANSCRIBE = 40
@@ -29,6 +30,11 @@ PROGRESS_MUX = 90
 PROGRESS_DONE = 100
 
 WAV_SAMPLE_RATE = 16000
+PREVIEW_AUDIO_BITRATE = "160k"
+PREVIEW_VIDEO_CRF = "23"
+#: App language code → ISO 639-2 tag written on our subtitle track.
+SUBTITLE_LANGUAGE_TAGS = {"pt": "por", "en": "eng", "es": "spa"}
+SUBTITLE_TRACK_TITLE = "Video Transcription"
 
 _MODEL_CACHE: dict[tuple[str, str | None], Any] = {}
 
@@ -205,7 +211,60 @@ class VideoProcessor:
         stored.save(name, content, save=False)
         self._write(**{field: stored.name})
 
+    def _ffmpeg(self, cmd: list[str], message: str) -> None:
+        """Run ffmpeg, turning a failure into a PipelineError.
+
+        Args:
+            cmd: Full ffmpeg argv (fixed program, paths from our own storage).
+            message: pt-BR error shown to the person on failure.
+
+        Raises:
+            PipelineError: If ffmpeg exits with an error.
+        """
+        try:
+            # Fixed ffmpeg argv, no shell; paths come from our own storage.
+            subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
+        except subprocess.CalledProcessError as error:
+            logger.error(f"[{self.job.id}] ffmpeg failed: {error.stderr!r}")
+            raise PipelineError(message) from error
+
+    def _audio_map(self) -> list[str]:
+        """``-map`` arguments selecting the chosen audio track (default: ffmpeg's pick)."""
+        index = self.job.audio_stream_index
+        return [] if index is None else ["-map", f"0:{index}"]
+
     # ----- steps ---------------------------------------------------------
+
+    def prepare_preview(self) -> None:
+        """Build the browser Prévia: picture copied (or re-encoded) + chosen track as AAC stereo.
+
+        Raises:
+            PipelineError: If ffmpeg fails.
+        """
+        self._step(JobStatus.PREPARING_PREVIEW, PROGRESS_PREVIEW, "Preparando prévia…")
+        media_path = self.job.media_file.path
+        is_video = self.job.media_kind == MediaKind.VIDEO
+        output_path = f"{media_path}_preview.{'mp4' if is_video else 'm4a'}"
+        if is_video:
+            picture = (
+                ["-c:v", "libx264", "-preset", "veryfast", "-crf", PREVIEW_VIDEO_CRF,
+                 "-pix_fmt", "yuv420p"]
+                if self.job.convert_video
+                else ["-c:v", "copy"]
+            )  # fmt: skip
+            video_args = ["-map", "0:v:0", *picture]
+        else:
+            video_args = ["-vn"]
+        audio_map = self._audio_map() or ["-map", "0:a:0"]
+        cmd = [
+            "ffmpeg", "-y", "-i", media_path, *video_args, *audio_map,
+            "-c:a", "aac", "-ac", "2", "-b:a", PREVIEW_AUDIO_BITRATE,
+            "-sn", "-movflags", "+faststart", output_path,
+        ]  # fmt: skip
+        self._ffmpeg(cmd, "Não foi possível preparar a prévia para o navegador.")
+        with open(output_path, "rb") as preview:
+            self._store("preview_file", PurePath(output_path).name, File(preview))
+        Path(output_path).unlink()
 
     def _resolve_device(self) -> str | None:
         """Translate the job's device choice into a Whisper device.
@@ -231,16 +290,11 @@ class VideoProcessor:
         media_path = self.job.media_file.path
         audio_path = f"{media_path}_temp.wav"
         cmd = [
-            "ffmpeg", "-y", "-i", media_path,
+            "ffmpeg", "-y", "-i", media_path, *self._audio_map(),
             "-vn", "-acodec", "pcm_s16le", "-ar", str(WAV_SAMPLE_RATE), "-ac", "1",
             audio_path,
         ]  # fmt: skip
-        try:
-            # Fixed ffmpeg argv, no shell; paths come from our own storage.
-            subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
-        except subprocess.CalledProcessError as error:
-            logger.error(f"[{self.job.id}] ffmpeg extraction failed: {error.stderr!r}")
-            raise PipelineError("Não foi possível extrair o áudio do arquivo.") from error
+        self._ffmpeg(cmd, "Não foi possível extrair o áudio do arquivo.")
         with open(audio_path, "rb") as audio:
             self._store("audio_file", f"{self.job.id}_audio.wav", File(audio))
         Path(audio_path).unlink()
@@ -309,33 +363,46 @@ class VideoProcessor:
         self._store("transcript_file", f"{job_id}_transcript.txt", _text_file(txt))
 
     def mux_soft_subtitle(self) -> None:
-        """Add the SRT to the video as a soft subtitle track (mov_text).
+        """Build the Vídeo legendado: every original track untouched plus our subtitle.
+
+        MKV keeps all streams as they are (our SRT stays SubRip). MP4 can only hold
+        text subtitles as mov_text, so subtitles are converted there. Our track is
+        the only default subtitle.
 
         Raises:
             PipelineError: If ffmpeg fails.
         """
         self._step(self.job.status, PROGRESS_MUX, "Embutindo a legenda no vídeo…")
         media_path = self.job.media_file.path
-        output_path = f"{media_path}_with_subtitles.mp4"
+        is_mkv = PurePath(media_path).suffix.lower() == ".mkv"
+        extension = "mkv" if is_mkv else "mp4"
+        output_path = f"{media_path}_with_subtitles.{extension}"
+        ours = len((self.job.analysis or {}).get("subtitles", []))
+        tag = SUBTITLE_LANGUAGE_TAGS.get(self.job.language, "und")
+        maps = (
+            ["-map", "0", "-map", "1", "-c", "copy"]
+            if is_mkv
+            else ["-map", "0:v", "-map", "0:a", "-map", "0:s?", "-map", "1",
+                  "-c", "copy", "-c:s", "mov_text"]
+        )  # fmt: skip
         cmd = [
-            "ffmpeg", "-y", "-i", media_path, "-i", self.job.srt_file.path,
-            "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=por",
+            "ffmpeg", "-y", "-i", media_path, "-i", self.job.srt_file.path, *maps,
+            "-disposition:s", "0", f"-disposition:s:{ours}", "default",
+            f"-metadata:s:s:{ours}", f"language={tag}",
+            f"-metadata:s:s:{ours}", f"title={SUBTITLE_TRACK_TITLE}",
             output_path,
         ]  # fmt: skip
-        try:
-            # Fixed ffmpeg argv, no shell; paths come from our own storage.
-            subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
-        except subprocess.CalledProcessError as error:
-            logger.error(f"[{self.job.id}] ffmpeg mux failed: {error.stderr!r}")
-            raise PipelineError("Não foi possível embutir a legenda no vídeo.") from error
+        self._ffmpeg(cmd, "Não foi possível embutir a legenda no vídeo.")
         with open(output_path, "rb") as video:
-            self._store("final_video", f"{self.job.id}_with_subtitles.mp4", File(video))
+            self._store("final_video", f"{self.job.id}_with_subtitles.{extension}", File(video))
         Path(output_path).unlink()
 
     def process(self) -> None:
         """Run every step; record a failure on the job instead of raising."""
         try:
             device = self._resolve_device()
+            if self.job.make_preview:
+                self.prepare_preview()
             self.extract_audio()
             self.transcribe_audio(device)
             self.generate_subtitle_files()

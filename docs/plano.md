@@ -22,6 +22,12 @@ Fechado com o Raul em 2026-11-18 (sessão de grilling). As decisões estão nas 
 - [x] Status "Na fila" e "Baixando modelo…".
 - [ ] Repo público com licença MIT ao fim da fase.
 
+## Fase 1c: Análise da Mídia (ADR 0007)
+- [x] Upload → ffprobe → Job "Aguardando sua decisão" → modal sempre → confirmar entra na fila.
+- [x] Modal: arquivo, vídeo, Faixas de áudio, legendas embutidas e o que o navegador toca (`canPlayType`).
+- [x] Decisão: Faixa de áudio, idioma (segue a faixa), modelo, dispositivo, Prévia e conversão da imagem.
+- [x] Prévia como primeira etapa; Vídeo legendado com todas as faixas originais.
+
 ## Fase 2: transcrição ao vivo
 - [ ] Blocos de 30s com 2s de Sobreposição. Trechos gravados e SRT/VTT parciais a cada Bloco.
 - [ ] `GET /api/jobs/<id>/segments?after=<s>`; a tela busca a cada 5s.

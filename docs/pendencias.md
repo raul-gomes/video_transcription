@@ -24,6 +24,11 @@ As fases planejadas estão em `docs/plano.md`. Aqui ficam problemas conhecidos e
 - [ ] Cancelar durante o download do modelo deixa um arquivo parcial no cache; o Whisper baixa de novo (confere o checksum), mas a tela não mostra "Baixando modelo…" nessa segunda vez.
 - [ ] Teste de ponta a ponta só com vídeos sem fala (tom puro). Falta conferir a qualidade com um vídeo real falado.
 
+## Análise da Mídia
+- [ ] Conversão da imagem na Prévia (HEVC/AV1) testada só com argv simulado; falta um arquivo HEVC real.
+- [ ] Legendas que já vêm no arquivo: hoje só informativas. Ideia: usar uma delas em vez de transcrever.
+- [ ] Vídeo legendado em MP4 com legendas de imagem (PGS) no original: a conversão para mov_text falha. MKV não tem esse problema.
+
 ## Futuro
 - [ ] Gerar áudio a partir do SRT.
 - [ ] Editar a legenda enquanto assiste.

@@ -16,10 +16,10 @@ Fechado com o Raul em 2026-11-18 (sessão de grilling). As decisões estão nas 
 - [x] Falha ao embutir a Legenda marca o Job como falho.
 - [x] Confiança dos Trechos calculada a partir do que o Whisper devolve.
 - [x] Modelo de transcrição carregado uma vez por worker.
-- [ ] Upload de vídeo (mp4, mkv, mov, webm) ou áudio (mp3, wav, m4a, ogg) até 2 GB (configurável). Áudio pula a extração e o Vídeo legendado.
-- [ ] Na tela de upload: idioma, Modelo de transcrição (padrão `small`) e Dispositivo (Automático/CPU/GPU, com a GPU habilitada só se o worker detectar uma).
-- [ ] Histórico de Jobs com exclusão completa (pede confirmação), Cancelar, e Interrompido → Reprocessar.
-- [ ] Status "Na fila" e "Baixando modelo…".
+- [x] Upload de vídeo (mp4, mkv, mov, webm) ou áudio (mp3, wav, m4a, ogg) até 2 GB (configurável). Áudio pula a extração e o Vídeo legendado.
+- [x] Na tela de upload: idioma, Modelo de transcrição (padrão `small`) e Dispositivo (Automático/CPU/GPU, com a GPU habilitada só se o worker detectar uma).
+- [x] Histórico de Jobs com exclusão completa (pede confirmação), Cancelar, e Interrompido → Reprocessar. Clicar no card abre o player com a Transcrição (um card aberto por vez).
+- [x] Status "Na fila" e "Baixando modelo…".
 - [ ] Repo público com licença MIT ao fim da fase.
 
 ## Fase 2: transcrição ao vivo

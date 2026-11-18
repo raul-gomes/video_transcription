@@ -3,7 +3,7 @@
 from celery import shared_task
 from loguru import logger
 
-from .models import TranscriptionJob
+from .models import JobStatus, TranscriptionJob
 from .utils import VideoProcessor
 
 
@@ -22,11 +22,14 @@ def process_video_task(job_id: str) -> None:
     except TranscriptionJob.DoesNotExist:
         logger.warning(f"[{job_id}] Job not found; it may have been deleted.")
         return
+    if job.status != JobStatus.QUEUED:
+        logger.info(f"[{job_id}] Skipped: status is {job.status}, not queued.")
+        return
 
     try:
         VideoProcessor(job).process()
     except Exception as error:
         logger.exception(f"[{job_id}] Unexpected error while processing.")
-        job.status = "failed"
-        job.current_step = f"Error: {error}"
-        job.save(update_fields=["status", "current_step", "updated_at"])
+        TranscriptionJob.objects.filter(pk=job.pk).update(
+            status=JobStatus.FAILED, error_message=f"Erro inesperado: {error}"
+        )

@@ -1,26 +1,67 @@
+"""Database models: Job (TranscriptionJob), Segment (SubtitleSegment) and worker state."""
+
 import uuid
 
 from django.db import models
 
+from .constants import DEFAULT_LANGUAGE, DEVICE_AUTO
 
-# Create your models here.
+
+class JobStatus(models.TextChoices):
+    """Lifecycle of a Job. Labels are the pt-BR text shown on the page."""
+
+    QUEUED = "queued", "Na fila"
+    DOWNLOADING_MODEL = "downloading_model", "Baixando modelo…"
+    EXTRACTING = "extracting", "Extraindo áudio"
+    TRANSCRIBING = "transcribing", "Transcrevendo"
+    GENERATING = "generating", "Gerando legendas"
+    COMPLETED = "completed", "Concluído"
+    FAILED = "failed", "Falhou"
+    CANCELLED = "cancelled", "Cancelado"
+    INTERRUPTED = "interrupted", "Interrompido"
+
+
+#: Statuses where a job is waiting or running and can be cancelled.
+ACTIVE_STATUSES = frozenset(
+    {
+        JobStatus.QUEUED,
+        JobStatus.DOWNLOADING_MODEL,
+        JobStatus.EXTRACTING,
+        JobStatus.TRANSCRIBING,
+        JobStatus.GENERATING,
+    }
+)
+#: Statuses where a worker is processing the job right now.
+RUNNING_STATUSES = ACTIVE_STATUSES - {JobStatus.QUEUED}
+#: Statuses that can be sent back to the queue.
+RETRYABLE_STATUSES = frozenset({JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.INTERRUPTED})
+
+
+class MediaKind(models.TextChoices):
+    """Whether the uploaded media is a video or audio only."""
+
+    VIDEO = "video", "Vídeo"
+    AUDIO = "audio", "Áudio"
+
+
 class TranscriptionJob(models.Model):
-    STATUS_CHOICES = [
-        ("pending", "Pending"),
-        ("extracting", "Extracting"),
-        ("transcribing", "Transcribing"),
-        ("generating", "Generating subtitles"),
-        ("completed", "Completed"),
-        ("failed", "Failed"),
-    ]
+    """A Job: one media file being transcribed, from upload to the end."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    video_file = models.FileField(upload_to="videos/")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    media_file = models.FileField(upload_to="videos/")
+    original_filename = models.CharField(max_length=255, blank=True)
+    media_kind = models.CharField(max_length=10, choices=MediaKind.choices, default=MediaKind.VIDEO)
+    language = models.CharField(max_length=10, default=DEFAULT_LANGUAGE)
+    model_name = models.CharField(max_length=20, default="small")
+    device = models.CharField(max_length=10, default=DEVICE_AUTO)
+
+    status = models.CharField(max_length=20, choices=JobStatus.choices, default=JobStatus.QUEUED)
     progress_percentage = models.IntegerField(default=0)
     current_step = models.CharField(max_length=100, blank=True)
+    error_message = models.TextField(blank=True)
+    celery_task_id = models.CharField(max_length=64, blank=True)
 
-    # Arquivos gerados
+    # Generated files
     audio_file = models.FileField(upload_to="audio/", blank=True)
     srt_file = models.FileField(upload_to="subtitles/", blank=True)
     vtt_file = models.FileField(upload_to="subtitles/", blank=True)
@@ -28,7 +69,6 @@ class TranscriptionJob(models.Model):
     transcript_file = models.FileField(upload_to="transcripts/", blank=True)
     final_video = models.FileField(upload_to="processed/", blank=True)
 
-    # Metadata
     duration_seconds = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -36,11 +76,19 @@ class TranscriptionJob(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-    def __str__(self):
-        return f"Job {self.id} - {self.video_file.name} - {self.status}"
+    def __str__(self) -> str:
+        """Readable identifier for logs and the admin."""
+        return f"Job {self.id} - {self.original_filename or self.media_file.name} - {self.status}"
+
+    @property
+    def is_active(self) -> bool:
+        """True while the job waits in the queue or is being processed."""
+        return self.status in ACTIVE_STATUSES
 
 
 class SubtitleSegment(models.Model):
+    """A Segment: one timed sentence of the transcript (source of truth for subtitles)."""
+
     job = models.ForeignKey(TranscriptionJob, on_delete=models.CASCADE, related_name="segments")
     start_time = models.FloatField()
     end_time = models.FloatField()
@@ -50,5 +98,25 @@ class SubtitleSegment(models.Model):
     class Meta:
         ordering = ["start_time"]
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Readable identifier for logs and the admin."""
         return f"Segment {self.start_time:.1f}s"
+
+
+class WorkerState(models.Model):
+    """What the transcription worker reported when it started (single row)."""
+
+    SINGLETON_ID = 1
+
+    gpu_available = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        """Readable identifier for logs and the admin."""
+        return f"Worker (GPU: {self.gpu_available})"
+
+    @classmethod
+    def current(cls) -> "WorkerState":
+        """Return the single worker state row, empty until a worker starts."""
+        state, _ = cls.objects.get_or_create(pk=cls.SINGLETON_ID)
+        return state

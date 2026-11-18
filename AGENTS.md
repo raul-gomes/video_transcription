@@ -17,6 +17,9 @@ App **local, de uma pessoa só, sem login** (ADR 0001) que transcreve a fala de 
 3. A Revisão por IA só cria Sugestões. Ela nunca altera tempos, quantidade ou ordem dos Trechos, e nunca apaga a Legenda original (ADR 0005).
 4. Dado da API entra na página com `textContent`/`createElement`, nunca `innerHTML` (ADR 0006).
 5. ffmpeg é chamado com argv fixo, sem shell.
+6. Toda escrita na API exige token CSRF (`core/permissions.py`): sem login, é o que impede outro site aberto no navegador de mexer nos Jobs.
+7. O processo principal do worker nunca inicializa CUDA (a detecção de GPU roda num subprocesso); senão os processos filhos do prefork não conseguem usar a GPU.
+8. Status do Job só é gravado se ele ainda estiver ativo: um Job cancelado nunca é sobrescrito pelo worker.
 
 ## Stack e convenções
 - Python 3.13 + uv, Django 5 + DRF, Celery + Redis (um Job por vez, ADR 0002), Whisper local, ffmpeg, SQLite em `DATA_DIR`.

@@ -38,8 +38,8 @@ def media_root(settings: Settings, tmp_path: Path) -> Path:
 @pytest.fixture
 def job(media_root: Path) -> TranscriptionJob:
     """A pending job with a small fake video file."""
-    instance = TranscriptionJob(status="pending")
-    instance.video_file.save("clip.mp4", ContentFile(b"fake-video"), save=False)
+    instance = TranscriptionJob(status="queued")
+    instance.media_file.save("clip.mp4", ContentFile(b"fake-video"), save=False)
     instance.save()
     return instance
 
@@ -118,7 +118,7 @@ class TestPipeline:
         job.refresh_from_db()
 
         assert job.status == "failed"
-        assert job.current_step == "Error: Audio extraction failed"
+        assert job.error_message == "Não foi possível extrair o áudio do arquivo."
 
     def test_transcription_failure_marks_job_failed(
         self, job: TranscriptionJob, ffmpeg_ok: MagicMock, monkeypatch: pytest.MonkeyPatch
@@ -129,7 +129,7 @@ class TestPipeline:
         job.refresh_from_db()
 
         assert job.status == "failed"
-        assert job.current_step == "Error: Transcription failed"
+        assert job.error_message == "Falha ao transcrever o áudio."
         assert not SubtitleSegment.objects.filter(job=job).exists()
 
 

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from django.core.files.base import ContentFile
-from django.test import Client
 from pytest_django.fixtures import Settings
 
 from core import utils
@@ -28,8 +27,8 @@ def media_root(settings: Settings, tmp_path: Path) -> Path:
 @pytest.fixture
 def job() -> TranscriptionJob:
     """A pending job with a small fake video file."""
-    instance = TranscriptionJob(status="pending")
-    instance.video_file.save("clip.mp4", ContentFile(b"fake-video"), save=False)
+    instance = TranscriptionJob(status="queued")
+    instance.media_file.save("clip.mp4", ContentFile(b"fake-video"), save=False)
     instance.save()
     return instance
 
@@ -58,13 +57,6 @@ def test_celery_runs_jobs_asynchronously() -> None:
 def test_worker_takes_one_job_at_a_time() -> None:
     """A worker must not reserve queued jobs while it is busy (ADR 0002)."""
     assert project_settings.CELERY_WORKER_PREFETCH_MULTIPLIER == 1
-
-
-@pytest.mark.django_db
-def test_progress_url_used_by_the_frontend_resolves(client: Client, job: TranscriptionJob) -> None:
-    """static/js/app.js polls /api/progress/<id>/ with a trailing slash."""
-    response = client.get(f"/api/progress/{job.id}/")
-    assert response.status_code == 200
 
 
 @pytest.mark.django_db
@@ -110,8 +102,8 @@ def test_model_is_loaded_once_per_worker(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(utils.whisper, "load_model", loader)
 
     for _ in range(2):
-        instance = TranscriptionJob(status="pending")
-        instance.video_file.save("clip.mp4", ContentFile(b"v"), save=False)
+        instance = TranscriptionJob(status="queued")
+        instance.media_file.save("clip.mp4", ContentFile(b"v"), save=False)
         instance.save()
         VideoProcessor(instance).process()
 
@@ -133,20 +125,4 @@ def test_unexpected_task_error_marks_job_failed(
     job.refresh_from_db()
 
     assert job.status == "failed"
-    assert job.current_step == "Error: boom"
-
-
-@pytest.mark.django_db
-def test_default_model_comes_from_settings(
-    job: TranscriptionJob, monkeypatch: pytest.MonkeyPatch, settings: Settings
-) -> None:
-    """The Whisper size is configurable; `small` is the agreed default."""
-    loader = whisper_loader(ONE_SEGMENT)
-    monkeypatch.setattr(utils.subprocess, "run", MagicMock(side_effect=fake_ffmpeg))
-    monkeypatch.setattr(utils.whisper, "load_model", loader)
-    settings.WHISPER_DEFAULT_MODEL = "tiny"
-
-    VideoProcessor(job).process()
-
-    loader.assert_called_once_with("tiny")
-    assert project_settings.WHISPER_DEFAULT_MODEL == "small"
+    assert job.error_message == "Erro inesperado: boom"

@@ -1,162 +1,89 @@
 {% extends 'core/base.html' %}
-{% load static %}
 
-{% block title %}Upload de Vídeo - Transcrição{% endblock %}
+{% block title %}Video Transcription{% endblock %}
 
 {% block content %}
+<header class="header">
+    <h1><i class="fas fa-closed-captioning" aria-hidden="true"></i> Video Transcription</h1>
+    <p>Transforme a fala de vídeos e áudios em legendas, direto na sua máquina.</p>
+</header>
 
-<!-- Copie aqui todo o conteúdo do body do seu index.html original -->
-<div class="header">
-    <h1><i class="fas fa-video"></i> Transcrição Automática de Vídeos</h1>
-    <p>Faça upload de um vídeo e receba legendas automaticamente</p>
-</div>
+<section class="card upload-card" aria-labelledby="uploadTitle">
+    <div class="card__body">
+        <h2 id="uploadTitle" class="section-title">Nova transcrição</h2>
 
-<!-- Upload Section -->
-<section id="uploadSection" class="upload-section">
-    <div class="upload-area" id="uploadArea">
-        <div class="upload-content">
-            <i class="fas fa-cloud-upload-alt upload-icon"></i>
-            <h3>Arraste seu vídeo aqui</h3>
-            <p>ou clique para selecionar</p>
-            <p class="file-info">Formatos suportados: MP4, AVI, MOV, MKV, WEBM, FLV, WMV</p>
+        <div class="upload-area" id="uploadArea" role="button" tabindex="0"
+             aria-label="Selecionar vídeo ou áudio">
+            <div class="upload-content">
+                <i class="fas fa-cloud-arrow-up upload-icon" aria-hidden="true"></i>
+                <h3>Arraste um vídeo ou áudio aqui</h3>
+                <p>ou clique para selecionar</p>
+                <p class="file-info" id="acceptedFormats"></p>
+            </div>
+            <input type="file" id="fileInput" hidden>
         </div>
-        <input type="file" id="fileInput" accept="video/*" style="display: none;">
-    </div>
 
-    <div id="fileSelected" class="file-selected" style="display: none;">
-        <div class="file-info-card">
-            <i class="fas fa-file-video"></i>
-            <div class="file-details">
-                <h4 id="fileName">Nome do arquivo</h4>
-                <p id="fileSize">Tamanho do arquivo</p>
+        <div id="fileSelected" class="file-selected" hidden>
+            <div class="file-info-card">
+                <i class="fas fa-file" aria-hidden="true"></i>
+                <div class="file-details">
+                    <h4 id="fileName"></h4>
+                    <p id="fileSize"></p>
+                </div>
+                <button type="button" class="btn btn--outline btn--sm" id="clearFileBtn">
+                    <i class="fas fa-xmark" aria-hidden="true"></i> Trocar
+                </button>
             </div>
         </div>
-        <button id="processBtn" class="btn btn--primary btn--full-width btn--lg">
-            <i class="fas fa-play"></i> Processar Vídeo
+
+        <div class="job-options">
+            <div class="form-group">
+                <label class="form-label" for="languageSelect">Idioma da fala</label>
+                <select class="form-control" id="languageSelect"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="modelSelect">Modelo do Whisper</label>
+                <select class="form-control" id="modelSelect"></select>
+                <small class="form-hint" id="modelHint"></small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="deviceSelect">Processar com</label>
+                <select class="form-control" id="deviceSelect">
+                    <option value="auto" selected>Automático</option>
+                    <option value="cpu">CPU</option>
+                    <option value="gpu">GPU</option>
+                </select>
+                <small class="form-hint" id="deviceHint"></small>
+            </div>
+        </div>
+
+        <button type="button" id="submitBtn" class="btn btn--primary btn--full-width btn--lg">
+            <i class="fas fa-play" aria-hidden="true"></i> Transcrever
         </button>
     </div>
 </section>
 
-<!-- Progress Section -->
-<section class="progress-section" id="progressSection" style="display: none;">
-    <div class="progress-card">
-        <h3>Processando seu vídeo...</h3>
-        <div class="progress-container">
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            <div class="progress-text">
-                <span id="progressLabel">Preparando...</span>
-                <span id="progressPercent">0%</span>
-            </div>
-        </div>
-        <div class="progress-steps" id="progressSteps">
-            <div class="step active" data-step="upload">
-                <i class="fas fa-upload"></i>
-                <span>Enviando</span>
-            </div>
-            <div class="step" data-step="extract">
-                <i class="fas fa-music"></i>
-                <span>Extraindo Áudio</span>
-            </div>
-            <div class="step" data-step="transcribe">
-                <i class="fas fa-microphone"></i>
-                <span>Transcrevendo</span>
-            </div>
-            <div class="step" data-step="generate">
-                <i class="fas fa-closed-captioning"></i>
-                <span>Gerando Legendas</span>
-            </div>
-            <div class="step" data-step="finalize">
-                <i class="fas fa-check"></i>
-                <span>Finalizando</span>
-            </div>
-        </div>
-    </div>
+<section class="jobs-section" aria-labelledby="jobsTitle">
+    <h2 id="jobsTitle" class="section-title">Seus vídeos</h2>
+    <div id="jobsList" class="jobs-list" aria-live="polite"></div>
 </section>
 
-<!-- Video Player Section -->
-<section class="player-section" id="playerSection" style="display: none;">
-    <div class="player-card">
-        <h3>Preview do Vídeo com Legendas</h3>
-        <div class="video-container">
-            <video id="videoPlayer" controls>
-                <track kind="subtitles" src="" srclang="pt" label="Português" id="subtitleTrack">
-                Seu navegador não suporta o elemento de vídeo.
-            </video>
-            <div class="video-controls">
-                <button class="btn btn--secondary" id="toggleSubtitles">
-                    <i class="fas fa-closed-captioning"></i> Ativar Legendas
-                </button>
-            </div>
+<dialog id="deleteDialog" class="dialog">
+    <form method="dialog">
+        <h3>Excluir arquivos?</h3>
+        <p>O vídeo <strong id="deleteFileName"></strong>, o áudio extraído e as legendas serão apagados do disco. Não dá para desfazer.</p>
+        <div class="dialog__actions">
+            <button class="btn btn--outline" value="cancel">Manter</button>
+            <button class="btn btn--danger" value="confirm">Excluir</button>
         </div>
-    </div>
-</section>
+    </form>
+</dialog>
 
-<!-- Download Section -->
-<section class="download-section" id="downloadSection" style="display: none;">
-    <div class="download-card">
-        <h3>Baixar Arquivos Processados</h3>
-        <div class="download-grid">
-            <button class="download-btn" id="downloadVideo" data-type="video">
-                <i class="fas fa-video"></i>
-                <div>
-                    <strong>Vídeo com Legendas</strong>
-                    <small>Arquivo MP4</small>
-                </div>
-            </button>
-            <button class="download-btn" id="downloadSrt" data-type="srt">
-                <i class="fas fa-file-text"></i>
-                <div>
-                    <strong>Arquivo SRT</strong>
-                    <small>Legendas SubRip</small>
-                </div>
-            </button>
-            <button class="download-btn" id="downloadVtt" data-type="vtt">
-                <i class="fas fa-file-code"></i>
-                <div>
-                    <strong>Arquivo VTT</strong>
-                    <small>WebVTT</small>
-                </div>
-            </button>
-            <button class="download-btn" id="downloadTranscript" data-type="transcript">
-                <i class="fas fa-file-alt"></i>
-                <div>
-                    <strong>Transcrição TXT</strong>
-                    <small>Texto puro</small>
-                </div>
-            </button>
-        </div>
-    </div>
-</section>
-
-<!-- Reset Section -->
-<section class="reset-section" id="resetSection" style="display: none;">
-    <button class="btn btn--outline btn--full-width" id="resetBtn">
-        <i class="fas fa-plus"></i> Processar Novo Vídeo
-    </button>
-</section>
-
-<!-- Footer -->
-<footer class="footer">
-    <p>© 2025 Transcritor de Vídeos - Powered by Whisper AI</p>
-</footer>
-
-
-<!-- Notification -->
-<div class="notification" id="notification" style="display: none;">
-    <div class="notification-content">
-        <i class="fas fa-check-circle"></i>
-        <span id="notificationText">Processamento concluído com sucesso!</span>
-    </div>
+<div class="notification" id="notification" role="status" hidden>
+    <span id="notificationText"></span>
 </div>
 
-{% endblock %}
-
-{% block extra_js %}
-<!-- <script>
-    // Adicionar token CSRF para requisições Django
-    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-    document.querySelector('meta[name="csrf-token"]').setAttribute('content', csrftoken);
-</script> -->
+<footer class="footer">
+    <p>Roda localmente com Whisper. Nada sai da sua máquina.</p>
+</footer>
 {% endblock %}

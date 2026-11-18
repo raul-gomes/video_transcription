@@ -1,9 +1,50 @@
+# Local single-user app (ADR 0001): the web port binds to 127.0.0.1 only and
+# Redis is reachable only inside the compose network.
+x-app: &app
+  image: video-transcription:local
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DATA_DIR: /data
+    CELERY_BROKER_URL: redis://redis:6379/0
+  volumes:
+    - app_data:/data
+    - whisper_models:/home/app/.cache/whisper
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
 services:
+  web:
+    <<: *app
+    # Only web builds; worker reuses the same image tag (avoids a parallel-build clash).
+    build: .
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate --noinput &&
+        exec gunicorn video_transcription.wsgi:application
+        --bind 0.0.0.0:8000 --workers 2 --timeout 600
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+
+  worker:
+    <<: *app
+    command:
+      - celery
+      - -A
+      - video_transcription
+      - worker
+      - --loglevel
+      - info
+      - --concurrency
+      - ${WORKER_CONCURRENCY:-1}
+
   redis:
     image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -14,4 +55,6 @@ services:
       retries: 5
 
 volumes:
+  app_data:
   redis_data:
+  whisper_models:

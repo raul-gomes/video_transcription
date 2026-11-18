@@ -20,3 +20,12 @@ def _clear_whisper_model_cache() -> None:
     from core.utils import clear_model_cache
 
     clear_model_cache()
+
+
+@pytest.fixture(autouse=True)
+def _no_host_whisper_or_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never look at the host's Whisper cache or GPU: tests behave the same on any machine."""
+    from core import utils
+
+    monkeypatch.setattr(utils, "is_model_downloaded", lambda name: True)
+    monkeypatch.setattr(utils, "cuda_available", lambda: False)

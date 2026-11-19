@@ -1,271 +1,168 @@
-import mimetypes
-import os
-import re
+"""HTTP layer: the page and the JSON API. Rules live in core/services.py."""
+
 from django.conf import settings
-from django.shortcuts import render
-from django.utils import timezone
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
-from django.http import JsonResponse, FileResponse, Http404, StreamingHttpResponse, HttpResponse
-from .models import TranscriptionJob, LANGUAGE_CHOICES, LANGUAGE_LABELS
-from .tasks import process_video_task
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from . import services
+from .constants import ACCEPTED_EXTENSIONS, DEFAULT_LANGUAGE, LANGUAGES, WHISPER_MODELS
+from .models import TranscriptionJob, WorkerState
+from .permissions import CsrfProtected
+from .serializers import DecisionSerializer, JobSerializer, SegmentSerializer, UploadSerializer
+from .services import Decision, JobChoices, JobError, JobStateError
 
 
-def _fmt_duration(seconds):
-    seconds = int(seconds or 0)
-    h, rem = divmod(seconds, 3600)
-    m, s = divmod(rem, 60)
-    return f'{h}:{m:02d}:{s:02d}' if h else f'{m}:{s:02d}'
+def index(request: HttpRequest) -> HttpResponse:
+    """Render the single page (it embeds the CSRF token the API requires)."""
+    return render(request, "core/index.html")
 
 
-def _status_label(job):
-    """Rótulo em português para o status do job."""
-    return {
-        'pending': 'Na fila',
-        'extracting': 'Extraindo o áudio',
-        'transcribing': 'Transcrevendo',
-        'generating': 'Gerando legendas',
-        'completed': 'Concluído',
-        'failed': 'Falhou',
-    }.get(job.status, job.status)
+def _error(error: JobError) -> Response:
+    """Turn a rule violation into 400 (bad input) or 409 (wrong status).
+
+    Args:
+        error: The service error.
+
+    Returns:
+        A response with the pt-BR message in ``detail``.
+    """
+    code = (
+        status.HTTP_409_CONFLICT
+        if isinstance(error, JobStateError)
+        else status.HTTP_400_BAD_REQUEST
+    )
+    return Response({"detail": str(error)}, status=code)
 
 
-def _language_label(code):
-    """Rótulo em português para um código de idioma do Whisper."""
-    code = (code or '').strip().lower()
-    if not code:
-        return ''
-    return LANGUAGE_LABELS.get(code, code.upper())
+class BaseApiView(APIView):
+    """API defaults: no login (local app, ADR 0001) and CSRF on every write."""
+
+    authentication_classes: list = []
+    permission_classes = [CsrfProtected]
 
 
-def _job_summary(job):
-    """Resumo de um job usado na listagem da biblioteca."""
-    return {
-        'id': str(job.id),
-        'name': os.path.basename(job.video_file.name) if job.video_file else '—',
-        'status': job.status,
-        'status_label': _status_label(job),
-        'progress': job.progress_percentage,
-        'current_step': 'Transcrição concluída!' if job.status == 'completed' else job.current_step,
-        'duration': job.duration_seconds or 0,
-        'duration_label': _fmt_duration(job.duration_seconds),
-        'segments': job.segments.count(),
-        'language': job.language or '',
-        'language_label': _language_label(job.language),
-        'created_at': job.created_at.isoformat(),
-        'created_label': timezone.localtime(job.created_at).strftime('%d/%m/%Y %H:%M'),
-        'has_final': bool(job.final_video),
-        'active': job.status not in ('completed', 'failed'),
-    }
+class OptionsView(BaseApiView):
+    """Choices and limits for the upload screen."""
 
-
-class IndexView(APIView):
-    def get(self, request):
-        return render(request, 'core/index.html')
-
-
-class LibraryView(APIView):
-    """Página com todos os vídeos enviados e o progresso de cada um."""
-
-    def get(self, request):
-        jobs = [_job_summary(j) for j in TranscriptionJob.objects.all()]
-        return render(request, 'core/library.html', {'jobs': jobs})
-
-
-class VideoDetailView(APIView):
-    """Página do player de um vídeo específico."""
-
-    def get(self, request, job_id):
-        try:
-            job = TranscriptionJob.objects.get(id=job_id)
-        except TranscriptionJob.DoesNotExist:
-            raise Http404('Job not found')
-        return render(request, 'core/detail.html', {'job': job})
-
-
-class JobListView(APIView):
-    """API com a lista de jobs (usada para atualizar a biblioteca em tempo real)."""
-
-    def get(self, request):
-        return Response([_job_summary(j) for j in TranscriptionJob.objects.all()])
-
-
-class UploadVideoView(APIView):
-    def post(self, request):
-        video_file = request.FILES.get('video_file')
-
-        if not video_file:
-            return Response({'error': 'No video file provided'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Idioma escolhido pelo usuário. Vazio (ou inválido) = detectar sozinho.
-        language = (request.data.get('language') or '').strip().lower()
-        allowed = {code for code, _ in LANGUAGE_CHOICES if code}
-        if language not in allowed:
-            language = ''
-
-        job = TranscriptionJob.objects.create(
-            video_file=video_file,
-            status='pending',
-            language=language,
+    def get(self, request: Request) -> Response:
+        """Return languages, models, defaults, limits and GPU availability."""
+        return Response(
+            {
+                "languages": [{"code": lang.code, "label": lang.label} for lang in LANGUAGES],
+                "models": [
+                    {"name": model.name, "label": model.label, "hint": model.hint}
+                    for model in WHISPER_MODELS
+                ],
+                "default_language": DEFAULT_LANGUAGE,
+                "default_model": settings.WHISPER_DEFAULT_MODEL,
+                "gpu_available": WorkerState.current().gpu_available,
+                "max_upload_mb": settings.MAX_UPLOAD_MB,
+                "accepted_extensions": sorted(ACCEPTED_EXTENSIONS),
+            }
         )
 
-        process_video_task.delay(str(job.id))
 
-        return Response({
-            'job_id': str(job.id),
-            'status': 'Uploaded',
-            'language': language,
-            'video_url': job.video_file.url if job.video_file else None,
-            'message': 'Video uploaded successfully. Processing started.'
-        })
+class JobListView(BaseApiView):
+    """History list and upload."""
 
+    def get(self, request: Request) -> Response:
+        """Return every job, newest first."""
+        return Response(JobSerializer(services.list_jobs(), many=True).data)
 
-class JobProgressView(APIView):
-    def get(self, request, job_id):
-        try:
-            job = TranscriptionJob.objects.get(id=job_id)
-            files = {
-                'srt': job.srt_file.url if job.srt_file else None,
-                'vtt': job.vtt_file.url if job.vtt_file else None,
-                'transcript': job.transcript_file.url if job.transcript_file else None,
-                'video': job.final_video.url if job.final_video else None,
-            }
-            segments = [
-                {
-                    'start': seg.start_time,
-                    'end': seg.end_time,
-                    'text': seg.text,
-                }
-                for seg in job.segments.all()
-            ]
-            return Response({
-                'job_id': str(job.id),
-                'status': job.status,
-                'status_label': _status_label(job),
-                'progress_percentage': job.progress_percentage,
-                'current_step': job.current_step,
-                'duration_seconds': job.duration_seconds,
-                'language': job.language or '',
-                'language_label': _language_label(job.language),
-                'segments_count': len(segments),
-                'segments': segments,
-                # Vídeo original enviado pelo usuário (usado para reproduzir).
-                'video_url': job.video_file.url if job.video_file else None,
-                'files': files,
-                'file': files,
-            })
-        except TranscriptionJob.DoesNotExist:
+    def post(self, request: Request) -> Response:
+        """Create a job from an uploaded file and the chosen options."""
+        form = UploadSerializer(data=request.data)
+        if not form.is_valid():
             return Response(
-                {'error': 'Job not found'},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Envie um arquivo de vídeo ou áudio.", "fields": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-
-class _DownloadMixin:
-    """Base view that streams a file field from a TranscriptionJob."""
-
-    field_name = None
-    download_name = None
-
-    def get(self, request, job_id):
+        data = form.validated_data
+        choices = JobChoices(
+            language=data["language"],
+            model=data.get("model") or settings.WHISPER_DEFAULT_MODEL,
+            device=data["device"],
+        )
         try:
-            job = TranscriptionJob.objects.get(id=job_id)
-        except TranscriptionJob.DoesNotExist:
-            raise Http404('Job not found')
+            job = services.create_job(data["media"], choices)
+        except JobError as error:
+            return _error(error)
+        return Response(JobSerializer(job).data, status=status.HTTP_201_CREATED)
 
-        file_field = getattr(job, self.field_name, None)
-        if not file_field or not file_field.name:
-            raise Http404('File not available for this job')
 
+class JobDetailView(BaseApiView):
+    """One job: delete."""
+
+    def delete(self, request: Request, job_id: str) -> Response:
+        """Delete a finished job and its files."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
         try:
-            handle = file_field.open('rb')
-        except FileNotFoundError:
-            raise Http404('File not found on disk')
-
-        content_type, _ = mimetypes.guess_type(file_field.name)
-        response = FileResponse(handle, content_type=content_type or 'application/octet-stream')
-        response['Content-Disposition'] = f'attachment; filename="{self.download_name}"'
-        return response
+            services.delete_job(job)
+        except JobError as error:
+            return _error(error)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class DownloadVideoView(_DownloadMixin, APIView):
-    field_name = 'final_video'
-    download_name = 'video_com_legendas.mp4'
+class JobConfirmView(BaseApiView):
+    """Confirm the Análise da Mídia decision and queue the job."""
 
-
-class DownloadSrtView(_DownloadMixin, APIView):
-    field_name = 'srt_file'
-    download_name = 'legendas.srt'
-
-
-class DownloadVttView(_DownloadMixin, APIView):
-    field_name = 'vtt_file'
-    download_name = 'legendas.vtt'
-
-
-class DownloadTranscriptView(_DownloadMixin, APIView):
-    field_name = 'transcript_file'
-    download_name = 'transcricao.txt'
-
-
-# --------------------------------------------------------------------------
-# Servidor de mídia com suporte a HTTP Range.
-#
-# O `django.views.static.serve` (usado em desenvolvimento) não implementa
-# "Range requests", o que impede o navegador de avançar/retroceder em vídeos
-# grandes (o seek "volta para o início"). Esta view responde 206 Partial
-# Content e habilita o seek.
-# --------------------------------------------------------------------------
-_RANGE_RE = re.compile(r'bytes=(\d*)-(\d*)')
-
-
-def _iter_file(path, start, length, chunk_size=64 * 1024):
-    with open(path, 'rb') as handle:
-        handle.seek(start)
-        remaining = length
-        while remaining > 0:
-            data = handle.read(min(chunk_size, remaining))
-            if not data:
-                break
-            remaining -= len(data)
-            yield data
-
-
-def serve_media(request, path):
-    media_root = os.path.realpath(str(settings.MEDIA_ROOT))
-    full_path = os.path.realpath(os.path.join(media_root, path))
-    if not (full_path == media_root or full_path.startswith(media_root + os.sep)) or not os.path.isfile(full_path):
-        raise Http404('Media not found')
-
-    size = os.path.getsize(full_path)
-    content_type, _ = mimetypes.guess_type(full_path)
-    content_type = content_type or 'application/octet-stream'
-
-    range_header = request.headers.get('Range')
-    if range_header:
-        match = _RANGE_RE.fullmatch(range_header.strip())
-        if match:
-            start = int(match.group(1)) if match.group(1) else 0
-            end = int(match.group(2)) if match.group(2) else size - 1
-            if start >= size or start > end:
-                response = HttpResponse(status=416)
-                response['Content-Range'] = f'bytes */{size}'
-                return response
-            end = min(end, size - 1)
-            length = end - start + 1
-            response = StreamingHttpResponse(
-                _iter_file(full_path, start, length),
-                status=206,
-                content_type=content_type,
+    def post(self, request: Request, job_id: str) -> Response:
+        """Record track, language, model, device and preview; return the queued job."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
+        form = DecisionSerializer(data=request.data)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Decisão inválida.", "fields": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            response['Content-Length'] = str(length)
-            response['Content-Range'] = f'bytes {start}-{end}/{size}'
-            response['Accept-Ranges'] = 'bytes'
-            return response
+        try:
+            services.confirm_job(job, Decision(**form.validated_data))
+        except JobError as error:
+            return _error(error)
+        return Response(JobSerializer(job).data)
 
-    response = FileResponse(open(full_path, 'rb'), content_type=content_type)
-    response['Content-Length'] = str(size)
-    response['Accept-Ranges'] = 'bytes'
-    return response
 
+class JobCancelView(BaseApiView):
+    """Cancel a queued or running job."""
+
+    def post(self, request: Request, job_id: str) -> Response:
+        """Cancel and return the updated job."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
+        try:
+            services.cancel_job(job)
+        except JobError as error:
+            return _error(error)
+        return Response(JobSerializer(job).data)
+
+
+class JobRetryView(BaseApiView):
+    """Send a failed, cancelled or interrupted job back to the queue."""
+
+    def post(self, request: Request, job_id: str) -> Response:
+        """Requeue and return the updated job."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
+        try:
+            services.retry_job(job)
+        except JobError as error:
+            return _error(error)
+        return Response(JobSerializer(job).data)
+
+
+class JobSegmentsView(BaseApiView):
+    """Transcript segments of a job, for the live view."""
+
+    def get(self, request: Request, job_id: str) -> Response:
+        """Return segments starting after ``?after=<seconds>`` (default: all)."""
+        job = get_object_or_404(TranscriptionJob, pk=job_id)
+        raw = request.query_params.get("after", "-1")
+        try:
+            after = float(raw)
+        except ValueError:
+            return Response(
+                {"detail": "Parâmetro 'after' inválido."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(SegmentSerializer(services.segments_after(job, after), many=True).data)

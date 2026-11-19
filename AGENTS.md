@@ -20,6 +20,7 @@ App **local, de uma pessoa só, sem login** (ADR 0001) que transcreve a fala de 
 6. Toda escrita na API exige token CSRF (`core/permissions.py`): sem login, é o que impede outro site aberto no navegador de mexer nos Jobs.
 7. O processo principal do worker nunca inicializa CUDA (a detecção de GPU roda num subprocesso); senão os processos filhos do prefork não conseguem usar a GPU.
 8. Status do Job só é gravado se ele ainda estiver ativo: um Job cancelado nunca é sobrescrito pelo worker.
+9. A página não carrega nada de fora (CDN, fontes, scripts): tudo vem de `static/`. Teste em `tests/test_api.py`.
 
 ## Stack e convenções
 - Python 3.13 + uv, Django 5 + DRF, Celery + Redis (um Job por vez, ADR 0002), Whisper local, ffmpeg, SQLite em `DATA_DIR`.

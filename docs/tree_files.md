@@ -27,6 +27,7 @@
 | `static/js/jobs-view.js` | Histórico: cards por Job, atualizados no lugar. |
 | `static/js/job-detail.js` | Card aberto: player e Transcrição com tempo clicável. |
 | `static/js/dom.js` | Construtor de DOM sem `innerHTML` e formatação pt-BR. |
+| `static/vendor/fontawesome/` | Font Awesome Free 6.0.0 (só o CSS base, os ícones sólidos e a fonte), para a página não depender de internet. Licença no `README.md` da pasta. |
 | `static/css/style.css` | Estilos (tema claro/escuro). |
 | `tests/` | Testes (pytest + pytest-django). `conftest.py` isola `DATA_DIR`, usa Celery em memória e nunca olha o cache do Whisper nem a GPU da máquina. |
 | `Dockerfile`, `docker-compose.yml`, `docker-compose.gpu.yml` | Imagem única web/worker, stack local e GPU opcional. |

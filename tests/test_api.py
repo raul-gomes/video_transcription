@@ -226,3 +226,18 @@ class TestSegments:
     def test_invalid_offset_is_400(self, client: Client) -> None:
         job = make_job()
         assert client.get(f"/api/jobs/{job.id}/segments/?after=abc").status_code == 400
+
+
+def test_page_loads_nothing_from_the_internet(client: Client) -> None:
+    """The app promises that nothing leaves the machine: no CDN assets."""
+    import re
+
+    html = client.get("/").content.decode()
+    external = re.findall(r'<(?:link|script)[^>]+(?:href|src)="(https?://[^"]+)"', html)
+    assert external == []
+
+    from django.conf import settings
+
+    for css in (settings.BASE_DIR / "static").rglob("*.css"):
+        urls = re.findall(r"url\(\s*['\"]?(https?://[^'\")]+)", css.read_text())
+        assert urls == [], f"{css.name} loads {urls}"

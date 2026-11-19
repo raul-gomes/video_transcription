@@ -4,7 +4,7 @@
 | --- | --- |
 | `video_transcription/settings.py` | Configuração do Django, toda vinda do ambiente (`.env.example`). |
 | `video_transcription/config.py` | Leitura de variáveis (`env_bool`, `env_list`) e `SECRET_KEY` gerada no primeiro uso. |
-| `video_transcription/urls.py` | Rotas do projeto e download dos arquivos gerados (`/media/`). |
+| `video_transcription/urls.py` | Rotas do projeto e download dos arquivos gerados (`/media/`), com suporte a `Range` (206) para o player conseguir pular no vídeo. |
 | `video_transcription/celery.py` | App Celery. |
 | `core/constants.py` | Idiomas, modelos do Whisper (com dica), dispositivos e extensões aceitas. |
 | `core/media_analysis.py` | Análise da Mídia: roda o ffprobe e descreve contêiner, vídeo, Faixas de áudio e legendas, com MIME para o `canPlayType` do navegador. |

@@ -14,7 +14,7 @@ As fases planejadas estão em `docs/plano.md`. Aqui ficam problemas conhecidos e
 ## Infra
 - [ ] Imagem Docker grande (PyTorch com suporte a CUDA): avaliar uma imagem só-CPU menor como opção.
 - [x] Perfil de GPU testado numa RTX 2060 (6 GB): `small` funciona; `medium` estoura a memória de vídeo com o desktop aberto (o Job falha com mensagem clara).
-- [ ] CI só roda quando o repo ficar público (cobrança do GitHub Actions em repo privado).
+- [x] CI só roda quando o repo ficar público (resolvido: repo público em 2026-11-19).
 
 ## Front
 - [x] Ícones do Font Awesome empacotados em `static/vendor/fontawesome/` (antes vinham de CDN). A fonte FKGroteskNeue, carregada de um servidor da Perplexity, foi removida (volta para as fontes do sistema).

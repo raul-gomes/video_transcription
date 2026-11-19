@@ -20,7 +20,7 @@ Fechado com o Raul em 2026-11-18 (sessão de grilling). As decisões estão nas 
 - [x] Na tela de upload: idioma, Modelo de transcrição (padrão `small`) e Dispositivo (Automático/CPU/GPU, com a GPU habilitada só se o worker detectar uma).
 - [x] Histórico de Jobs com exclusão completa (pede confirmação), Cancelar, e Interrompido → Reprocessar. Clicar no card abre o player com a Transcrição (um card aberto por vez).
 - [x] Status "Na fila" e "Baixando modelo…".
-- [ ] Repo público com licença MIT ao fim da fase.
+- [x] Repo público com licença MIT ao fim da fase.
 
 ## Fase 1c: Análise da Mídia (ADR 0007)
 - [x] Upload → ffprobe → Job "Aguardando sua decisão" → modal sempre → confirmar entra na fila.

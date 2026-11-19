@@ -39,3 +39,7 @@ O app foi feito para uma pessoa só, na própria máquina, e **não tem login**.
 Comandos de desenvolvimento, testes e qualidade em [`docs/comandos.md`](docs/comandos.md). Decisões de arquitetura em [`docs/adr/`](docs/adr/) e termos do domínio em [`GLOSSARY.md`](GLOSSARY.md).
 
 Stack: Python 3.13, Django 5 + DRF, Celery + Redis, Whisper, ffmpeg, SQLite.
+
+## Licença
+
+[MIT](LICENSE). Os ícones do Font Awesome em `static/vendor/fontawesome/` têm licença própria (veja o README da pasta).

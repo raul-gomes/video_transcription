@@ -233,6 +233,7 @@ def retry_job(job: TranscriptionJob) -> None:
     job.current_step = QUEUED_STEP
     job.error_message = ""
     job.duration_seconds = None
+    job.detected_language = ""
     job.save()
     _enqueue(job)
 

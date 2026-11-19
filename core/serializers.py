@@ -38,6 +38,7 @@ class JobSerializer(serializers.ModelSerializer):
     error = serializers.SerializerMethodField()
     model = serializers.CharField(source="model_name")
     files = serializers.SerializerMethodField()
+    detected_language = serializers.SerializerMethodField()
 
     class Meta:
         model = TranscriptionJob
@@ -50,6 +51,7 @@ class JobSerializer(serializers.ModelSerializer):
             "step_label",
             "error",
             "language",
+            "detected_language",
             "model",
             "device",
             "created_at",
@@ -70,6 +72,10 @@ class JobSerializer(serializers.ModelSerializer):
     def get_error(self, job: TranscriptionJob) -> str | None:
         """Error message for failed jobs."""
         return job.error_message or None
+
+    def get_detected_language(self, job: TranscriptionJob) -> str | None:
+        """Language found in the first Bloco with speech (Automático only), or None."""
+        return job.detected_language or None
 
     def get_files(self, job: TranscriptionJob) -> dict[str, str | None]:
         """URL of each downloadable file (None until it exists)."""

@@ -18,6 +18,7 @@ from core import utils
 from core.models import SubtitleSegment, TranscriptionJob
 from core.tasks import process_video_task
 from core.utils import VideoProcessor
+from tests.helpers import FAKE_AUDIO_SECONDS, write_silent_wav
 
 WHISPER_RESULT = {
     "segments": [
@@ -46,7 +47,10 @@ def job(media_root: Path) -> TranscriptionJob:
 
 def fake_ffmpeg(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[bytes]:
     """Pretend to run ffmpeg by writing the output file (last argv item)."""
-    Path(cmd[-1]).write_bytes(b"fake-output")
+    if cmd[-1].endswith(".wav"):
+        write_silent_wav(cmd[-1], FAKE_AUDIO_SECONDS)
+    else:
+        Path(cmd[-1]).write_bytes(b"fake-output")
     return subprocess.CompletedProcess(cmd, 0)
 
 

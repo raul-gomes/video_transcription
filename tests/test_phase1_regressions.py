@@ -13,6 +13,7 @@ from pytest_django.fixtures import Settings
 from core import utils
 from core.models import TranscriptionJob
 from core.utils import VideoProcessor
+from tests.helpers import FAKE_AUDIO_SECONDS, write_silent_wav
 from video_transcription import settings as project_settings
 from video_transcription.celery import app as celery_app
 
@@ -35,7 +36,10 @@ def job() -> TranscriptionJob:
 
 def fake_ffmpeg(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[bytes]:
     """Pretend to run ffmpeg by writing the output file (last argv item)."""
-    Path(cmd[-1]).write_bytes(b"fake-output")
+    if cmd[-1].endswith(".wav"):
+        write_silent_wav(cmd[-1], FAKE_AUDIO_SECONDS)
+    else:
+        Path(cmd[-1]).write_bytes(b"fake-output")
     return subprocess.CompletedProcess(cmd, 0)
 
 

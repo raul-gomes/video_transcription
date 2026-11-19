@@ -33,7 +33,7 @@ Fechado com o Raul em 2026-11-18 (sessão de grilling). As decisões estão nas 
 - [ ] Blocos de 30s com 2s de Sobreposição sobre o áudio carregado uma vez; Trechos aceitos só depois da Fronteira; contexto do Bloco anterior.
 - [ ] Idioma do Automático detectado no primeiro Bloco com fala e gravado no Job.
 - [ ] SRT/VTT parciais a cada Bloco; progresso "bloco N de M"; JSON, TXT e Vídeo legendado no fim.
-- [ ] Cancelar ao fim do Bloco ("Cancelando…"); cancelado ou falho mantém Trechos e SRT parcial.
+- [ ] Cancelado (instantâneo) ou falho mantém os Trechos e o SRT parcial do último Bloco concluído.
 - [ ] Player: play desde o primeiro Trecho, pausa na Fronteira e retoma com 3s à frente; trilha VTT parcial atualizada.
 - [ ] Teste com vídeo falado real na GPU.
 

@@ -25,6 +25,7 @@ JOB_KEYS = {
     "step_label",
     "error",
     "language",
+    "detected_language",
     "model",
     "device",
     "created_at",

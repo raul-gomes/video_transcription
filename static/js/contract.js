@@ -13,8 +13,8 @@
  * @property {string} media        Original uploaded media (always present).
  * @property {string|null} preview  Browser Prévia, when the person asked for one.
  * @property {string|null} video  Subtitled video (null for audio media).
- * @property {string|null} srt
- * @property {string|null} vtt
+ * @property {string|null} srt   Partial while the job is running (rewritten after each Bloco).
+ * @property {string|null} vtt   Partial while the job is running (rewritten after each Bloco).
  * @property {string|null} txt
  * @property {string|null} json
  */
@@ -29,6 +29,7 @@
  * @property {string} step_label       Current step, already in pt-BR.
  * @property {string|null} error       Error message when status is failed.
  * @property {string} language         Whisper language code, or "auto".
+ * @property {string|null} detected_language  Language Whisper found in the first Bloco with speech (auto only).
  * @property {string} model            Whisper model size.
  * @property {'auto'|'cpu'|'gpu'} device
  * @property {string} created_at       ISO 8601.
@@ -119,10 +120,16 @@ export const STATUS = {
 /** ISO 639-2 tags in media files mapped to the app's language codes. */
 export const TRACK_LANGUAGE_TO_CODE = { por: 'pt', eng: 'en', spa: 'es' };
 
-/** Statuses where the job is still moving and can be cancelled. */
+/** Statuses where the job is still moving and can be cancelled (files may be partial). */
 export const ACTIVE_STATUSES = new Set([
   'queued', 'preparing_preview', 'downloading_model', 'extracting', 'transcribing', 'generating',
 ]);
+
+/** Downloads that exist (partially) before the job ends. */
+export const PARTIAL_FILES = new Set(['srt', 'vtt']);
+
+/** The player resumes once the transcript is this many seconds ahead of it. */
+export const RESUME_AHEAD_SECONDS = 3;
 
 /** Statuses that can be sent back to the queue. */
 export const RETRYABLE_STATUSES = new Set(['failed', 'cancelled', 'interrupted']);

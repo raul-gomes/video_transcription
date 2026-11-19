@@ -1,4 +1,4 @@
-"""Transcription pipeline: extract audio → Whisper → subtitle files → subtitled video.
+"""Transcription pipeline: extract audio → Whisper by Bloco → subtitle files → subtitled video.
 
 Every status write is conditional on the job still being active, so a job the
 person cancelled mid-run is never overwritten by the worker.
@@ -13,6 +13,7 @@ import wave
 from pathlib import Path, PurePath
 from typing import Any
 
+import numpy as np
 import whisper
 from django.core.files import File
 from django.core.files.base import ContentFile
@@ -30,6 +31,13 @@ PROGRESS_MUX = 90
 PROGRESS_DONE = 100
 
 WAV_SAMPLE_RATE = 16000
+#: Live transcription (ADR 0003): Bloco length and how much of the previous one it repeats.
+BLOCK_SECONDS = 30
+OVERLAP_SECONDS = 2
+#: Characters of the previous text given to Whisper as context for the next Bloco.
+CONTEXT_CHARS = 200
+#: 16-bit PCM full scale, to turn samples into Whisper's float range [-1, 1).
+PCM16_FULL_SCALE = 32768.0
 PREVIEW_AUDIO_BITRATE = "160k"
 PREVIEW_VIDEO_CRF = "23"
 #: App language code → ISO 639-2 tag written on our subtitle track.
@@ -158,6 +166,75 @@ def wav_duration_seconds(path: str) -> float | None:
         return None
 
 
+def plan_blocks(duration: float) -> list[tuple[float, float]]:
+    """Split the audio into Blocos of BLOCK_SECONDS that repeat OVERLAP_SECONDS of the previous one.
+
+    Args:
+        duration: Audio length in seconds.
+
+    Returns:
+        ``(start, end)`` of each Bloco, in seconds.
+    """
+    blocks = []
+    start = 0.0
+    while True:
+        end = min(start + BLOCK_SECONDS, duration)
+        blocks.append((start, end))
+        if end >= duration:
+            return blocks
+        start += BLOCK_SECONDS - OVERLAP_SECONDS
+
+
+def accept_segments(
+    raw: list[dict[str, Any]], offset: float, frontier: float
+) -> list[dict[str, Any]]:
+    """Move a Bloco's segments to media time and keep only those after the Fronteira.
+
+    A segment starting before the Fronteira da transcrição (end of the last accepted
+    segment) belongs to the overlap already transcribed by the previous Bloco.
+
+    Args:
+        raw: Segments as Whisper returns them, relative to the Bloco.
+        offset: Bloco start in the media, in seconds.
+        frontier: End of the last accepted segment, in seconds.
+
+    Returns:
+        The kept segments with ``start``/``end`` in media time (other keys untouched).
+    """
+    moved = (
+        {**segment, "start": segment["start"] + offset, "end": segment["end"] + offset}
+        for segment in raw
+    )
+    return [segment for segment in moved if segment["start"] >= frontier]
+
+
+def load_wav_samples(path: str) -> np.ndarray:
+    """Read the extracted mono 16 kHz 16-bit WAV as float32 samples for Whisper.
+
+    Args:
+        path: WAV written by ``extract_audio``.
+
+    Returns:
+        Samples in [-1, 1).
+    """
+    with wave.open(path, "rb") as wav:
+        frames = wav.readframes(wav.getnframes())
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_FULL_SCALE
+
+
+def _context(texts: list[str]) -> str | None:
+    """Tail of the transcript so far, used as Whisper's ``initial_prompt``.
+
+    Args:
+        texts: Accepted segment texts in time order.
+
+    Returns:
+        At most CONTEXT_CHARS characters, or None when there is no text yet.
+    """
+    joined = " ".join(text.strip() for text in texts if text.strip())
+    return joined[-CONTEXT_CHARS:].strip() or None
+
+
 class VideoProcessor:
     """Runs the full pipeline for one job, using the job's language, model and device."""
 
@@ -208,6 +285,10 @@ class VideoProcessor:
             content: File content.
         """
         stored = getattr(self.job, field)
+        if stored:
+            # Replace instead of letting the storage add a suffix: partial subtitles are
+            # rewritten after each Bloco and keep the same URL.
+            stored.delete(save=False)
         stored.save(name, content, save=False)
         self._write(**{field: stored.name})
 
@@ -301,22 +382,45 @@ class VideoProcessor:
         self._write(duration_seconds=wav_duration_seconds(self.job.audio_file.path))
 
     def transcribe_audio(self, device: str | None) -> None:
-        """Transcribe the extracted audio and store the segments.
+        """Transcribe the extracted audio Bloco by Bloco, publishing each one (ADR 0003).
+
+        After every Bloco its segments are stored and the SRT/VTT are rewritten, so the
+        page shows the text while the job runs. In Automático, the language found in the
+        first Bloco with speech is kept for the rest.
 
         Args:
             device: Whisper device from ``_resolve_device``.
 
         Raises:
-            PipelineError: If Whisper fails.
+            PipelineError: If Whisper fails (segments from earlier Blocos are kept).
         """
         name = self.job.model_name
         if not is_model_downloaded(name):
             self._step(JobStatus.DOWNLOADING_MODEL, PROGRESS_DOWNLOAD, f"Baixando modelo {name}…")
+        samples = load_wav_samples(self.job.audio_file.path)
+        blocks = plan_blocks(len(samples) / WAV_SAMPLE_RATE)
+        language = None if self.job.language == AUTO_LANGUAGE else self.job.language
+        frontier = 0.0
+        texts: list[str] = []
         try:
             model = get_model(name, device=device)
-            self._step(JobStatus.TRANSCRIBING, PROGRESS_TRANSCRIBE, "Transcrevendo com Whisper…")
-            language = None if self.job.language == AUTO_LANGUAGE else self.job.language
-            result = model.transcribe(self.job.audio_file.path, language=language)
+            for number, (start, end) in enumerate(blocks, start=1):
+                span = PROGRESS_GENERATE - PROGRESS_TRANSCRIBE
+                percentage = PROGRESS_TRANSCRIBE + span * (number - 1) // len(blocks)
+                label = f"Transcrevendo bloco {number} de {len(blocks)}"
+                self._step(JobStatus.TRANSCRIBING, percentage, label)
+                piece = samples[int(start * WAV_SAMPLE_RATE) : int(end * WAV_SAMPLE_RATE)]
+                result = model.transcribe(piece, language=language, initial_prompt=_context(texts))
+                accepted = accept_segments(result["segments"], offset=start, frontier=frontier)
+                if not accepted:
+                    continue
+                self._save_segments(accepted)
+                frontier = accepted[-1]["end"]
+                texts.extend(segment["text"] for segment in accepted)
+                if language is None and any(segment["text"].strip() for segment in accepted):
+                    language = result.get("language")
+                    self._write(detected_language=language or "")
+                self._write_subtitles()
         except JobCancelledError:
             raise
         except Exception as error:
@@ -330,6 +434,13 @@ class VideoProcessor:
                 ) from error
             logger.exception(f"[{self.job.id}] Whisper failed.")
             raise PipelineError("Falha ao transcrever o áudio.") from error
+
+    def _save_segments(self, segments: list[dict[str, Any]]) -> None:
+        """Store accepted segments (already in media time).
+
+        Args:
+            segments: Output of ``accept_segments``.
+        """
         SubtitleSegment.objects.bulk_create(
             SubtitleSegment(
                 job=self.job,
@@ -338,16 +449,26 @@ class VideoProcessor:
                 text=segment["text"],
                 confidence=confidence_from_logprob(segment.get("avg_logprob")),
             )
-            for segment in result["segments"]
+            for segment in segments
         )
+
+    def _speech_segments(self) -> list[SubtitleSegment]:
+        """Stored segments with text, in time order."""
+        return [seg for seg in self.job.segments.order_by("start_time") if seg.text.strip()]
+
+    def _write_subtitles(self) -> None:
+        """Rewrite the SRT and VTT with every segment stored so far."""
+        segments = self._speech_segments()
+        job_id = self.job.id
+        self._store("srt_file", f"{job_id}.srt", _text_file(self._generate_srt(segments)))
+        self._store("vtt_file", f"{job_id}.vtt", _text_file(self._generate_vtt(segments)))
 
     def generate_subtitle_files(self) -> None:
         """Write SRT, VTT, JSON and TXT from the non-empty segments."""
         self._step(JobStatus.GENERATING, PROGRESS_GENERATE, "Gerando legendas…")
-        segments = [seg for seg in self.job.segments.all() if seg.text and seg.text.strip()]
+        self._write_subtitles()
+        segments = self._speech_segments()
         job_id = self.job.id
-        self._store("srt_file", f"{job_id}.srt", _text_file(self._generate_srt(segments)))
-        self._store("vtt_file", f"{job_id}.vtt", _text_file(self._generate_vtt(segments)))
         data = [
             {
                 "start": seg.start_time,
@@ -378,7 +499,7 @@ class VideoProcessor:
         extension = "mkv" if is_mkv else "mp4"
         output_path = f"{media_path}_with_subtitles.{extension}"
         ours = len((self.job.analysis or {}).get("subtitles", []))
-        tag = SUBTITLE_LANGUAGE_TAGS.get(self.job.language, "und")
+        tag = SUBTITLE_LANGUAGE_TAGS.get(self.job.detected_language or self.job.language, "und")
         maps = (
             ["-map", "0", "-map", "1", "-c", "copy"]
             if is_mkv

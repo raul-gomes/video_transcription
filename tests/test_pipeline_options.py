@@ -12,6 +12,7 @@ from pytest_django.fixtures import Settings
 from core import tasks, utils
 from core.models import JobStatus, TranscriptionJob
 from core.utils import VideoProcessor
+from tests.helpers import FAKE_AUDIO_SECONDS, write_silent_wav
 
 pytestmark = pytest.mark.django_db
 
@@ -30,7 +31,10 @@ def ffmpeg(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Fake ffmpeg that writes its output file (last argv item)."""
 
     def run(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[bytes]:
-        Path(cmd[-1]).write_bytes(b"fake-output")
+        if cmd[-1].endswith(".wav"):
+            write_silent_wav(cmd[-1], FAKE_AUDIO_SECONDS)
+        else:
+            Path(cmd[-1]).write_bytes(b"fake-output")
         return subprocess.CompletedProcess(cmd, 0)
 
     runner = MagicMock(side_effect=run)

@@ -16,7 +16,7 @@
 | `core/urls.py` | Rotas da página e da API. |
 | `core/tasks.py` | Task Celery: pula Job que não está na fila e grava erros inesperados no Job. |
 | `core/worker.py` | Hook de início do worker: detecta a GPU num subprocesso e marca Jobs interrompidos. |
-| `core/utils.py` | Pipeline (Prévia → extrair a Faixa escolhida → Whisper → Legendas → embutir), cache do modelo por worker e dispositivo, detecção de GPU, falta de memória de vídeo. Escritas de status só valem se o Job ainda estiver ativo. |
+| `core/utils.py` | Pipeline (Prévia → extrair a Faixa escolhida → Whisper em Blocos → Legendas → embutir). Transcrição ao vivo (ADR 0003): `plan_blocks`, `accept_segments` (Fronteira da transcrição), contexto do Bloco anterior, idioma detectado uma vez, SRT/VTT parciais a cada Bloco. Cache do modelo por worker e dispositivo, detecção de GPU, falta de memória de vídeo. Escritas de status só valem se o Job ainda estiver ativo. |
 | `ai_revision/` | Revisão por IA (vazio até a Fase 3). |
 | `templates/core/` | Página única (template Django). |
 | `static/js/contract.js` | Contrato da API (JSDoc) e rótulos de status. |
@@ -25,10 +25,11 @@
 | `static/js/analysis-dialog.js` | Modal da Análise da Mídia: mostra o arquivo, pergunta ao navegador o que ele toca e coleta a decisão. |
 | `static/js/upload-view.js` | Card de envio: arquivo, idioma, modelo, dispositivo e validação. |
 | `static/js/jobs-view.js` | Histórico: cards por Job, atualizados no lugar. |
-| `static/js/job-detail.js` | Card aberto: player e Transcrição com tempo clicável. |
+| `static/js/job-detail.js` | Card aberto: player e Transcrição com tempo clicável. Durante o Job, pausa na Fronteira da transcrição e troca a trilha pela VTT parcial. |
 | `static/js/dom.js` | Construtor de DOM sem `innerHTML` e formatação pt-BR. |
 | `static/vendor/fontawesome/` | Font Awesome Free 6.0.0 (só o CSS base, os ícones sólidos e a fonte), para a página não depender de internet. Licença no `README.md` da pasta. |
 | `static/css/style.css` | Estilos (tema claro/escuro). |
+| `tests/helpers.py` | WAV silencioso de verdade para os fakes do ffmpeg (o pipeline lê as amostras). |
 | `tests/` | Testes (pytest + pytest-django). `conftest.py` isola `DATA_DIR`, usa Celery em memória e nunca olha o cache do Whisper nem a GPU da máquina. |
 | `Dockerfile`, `docker-compose.yml`, `docker-compose.gpu.yml` | Imagem única web/worker, stack local e GPU opcional. |
 | `.env.example` | Variáveis aceitas, com padrões seguros. |

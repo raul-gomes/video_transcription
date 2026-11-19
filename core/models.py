@@ -55,6 +55,8 @@ class TranscriptionJob(models.Model):
     original_filename = models.CharField(max_length=255, blank=True)
     media_kind = models.CharField(max_length=10, choices=MediaKind.choices, default=MediaKind.VIDEO)
     language = models.CharField(max_length=10, default=DEFAULT_LANGUAGE)
+    #: In Automático, the language Whisper found in the first Bloco with speech (ADR 0003).
+    detected_language = models.CharField(max_length=10, blank=True)
     model_name = models.CharField(max_length=20, default="small")
     device = models.CharField(max_length=10, default=DEVICE_AUTO)
 

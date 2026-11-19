@@ -4,7 +4,7 @@
  */
 
 import {
-  ACTIVE_STATUSES, DEVICE_LABELS, RETRYABLE_STATUSES, STATUS,
+  ACTIVE_STATUSES, DEVICE_LABELS, PARTIAL_FILES, RETRYABLE_STATUSES, STATUS,
 } from './contract.js';
 import {
   el, formatDate, formatDuration, icon,
@@ -131,7 +131,7 @@ function summaryContent(job, languageLabels, actions) {
   const meta = [
     formatDate(job.created_at),
     job.duration_seconds ? formatDuration(job.duration_seconds) : null,
-    languageLabels[job.language] || job.language,
+    languageLabel(job, languageLabels),
     `Modelo ${job.model}`,
     DEVICE_LABELS[job.device],
   ].filter(Boolean).join(' · ');
@@ -152,7 +152,7 @@ function summaryContent(job, languageLabels, actions) {
     !active && job.status !== 'failed' && job.step_label !== status.label
       ? el('p', { class: 'job-card__note', text: job.step_label })
       : null,
-    job.status === 'completed' ? downloads(job) : null,
+    downloads(job),
     el('div', { class: 'job-card__actions' }, buttons(job, actions)),
   ];
 }
@@ -171,14 +171,32 @@ function progress(job) {
   ]);
 }
 
-/** @param {Job} job */
+/**
+ * Language shown on the card; in Automático, the one detected in the first Bloco with speech.
+ * @param {Job} job
+ * @param {Object<string, string>} languageLabels
+ */
+function languageLabel(job, languageLabels) {
+  const label = (code) => languageLabels[code] || code;
+  if (job.language === 'auto' && job.detected_language) return `${label(job.detected_language)} (detectado)`;
+  return label(job.language);
+}
+
+/**
+ * Download chips. While the job is not completed, SRT and VTT hold what was
+ * transcribed so far and are marked as partial.
+ * @param {Job} job
+ * @returns {HTMLElement|null}
+ */
 function downloads(job) {
+  const partial = job.status !== 'completed';
   const links = DOWNLOADS
-    .filter((item) => job.files[item.key])
+    .filter((item) => job.files[item.key] && (!partial || PARTIAL_FILES.has(item.key)))
     .map((item) => el('a', {
-      class: 'download-chip', href: job.files[item.key], download: true,
-    }, [icon(item.icon), ` ${item.label}`]));
-  return el('div', { class: 'job-card__downloads' }, links);
+      class: `download-chip${partial ? ' download-chip--partial' : ''}`, href: job.files[item.key], download: true,
+      title: partial ? 'Contém o que já foi transcrito até agora' : null,
+    }, [icon(item.icon), ` ${item.label}${partial ? ' (parcial)' : ''}`]));
+  return links.length ? el('div', { class: 'job-card__downloads' }, links) : null;
 }
 
 /**

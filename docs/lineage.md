@@ -10,6 +10,7 @@ Atualizado em 2026-11-18. Fonte da verdade: as migrations em `core/migrations/`.
 | `original_filename` | texto(255) | Nome do arquivo como a pessoa enviou (exibido na tela). |
 | `media_kind` | texto(10) | `video` ou `audio`. Áudio não gera Vídeo legendado. |
 | `language` | texto(10) | Código do idioma (`pt`, `en`, `es`) ou `auto`. |
+| `detected_language` | texto (vazio) | No Automático, idioma que o Whisper achou no primeiro Bloco com fala (ADR 0003). Limpo ao Reprocessar. |
 | `model_name` | texto(20) | Modelo de transcrição: `tiny`, `base`, `small`, `medium`, `large`. |
 | `device` | texto(10) | Dispositivo: `auto`, `cpu` ou `gpu`. |
 | `status` | texto(20) | `awaiting_decision` (padrão), `queued`, `preparing_preview`, `downloading_model`, `extracting`, `transcribing`, `generating`, `completed`, `failed`, `cancelled`, `interrupted`. |
@@ -56,4 +57,5 @@ Linha única (`id = 1`), gravada pelo worker ao iniciar.
 | --- | --- |
 | `core/0001_initial` | Cria Job e Trecho. |
 | `core/0003_media_analysis_and_preview` | Análise da Mídia, decisão (faixa, Prévia, conversão de imagem), arquivo da Prévia; status `awaiting_decision` (novo padrão) e `preparing_preview`. |
+| `core/0004_job_detected_language` | Idioma detectado no primeiro Bloco com fala (`detected_language`). |
 | `core/0002_job_options_statuses_worker_state` | Renomeia `video_file` → `media_file`; adiciona nome original, tipo de mídia, idioma, modelo, dispositivo, erro e task; novos status (`pending` vira `queued`); cria o estado do worker. |

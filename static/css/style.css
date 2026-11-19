@@ -1246,6 +1246,12 @@ select.form-control {
   color: var(--color-primary);
 }
 
+/* SRT/VTT while the job runs: what was transcribed so far. */
+.download-chip--partial {
+  border-style: dashed;
+  color: var(--color-text-secondary);
+}
+
 .dialog {
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-lg);
@@ -1368,6 +1374,32 @@ select.form-control {
 
 audio.job-detail__player {
   background: transparent;
+}
+
+/* Shown over the player when it reached the Fronteira da transcrição. */
+.job-detail__media {
+  position: relative;
+}
+
+.job-detail__wait {
+  position: absolute;
+  top: var(--space-8);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+}
+
+audio.job-detail__player + .job-detail__wait {
+  position: static;
+  transform: none;
+  display: inline-block;
+  margin-top: var(--space-8);
 }
 
 .job-detail__title {

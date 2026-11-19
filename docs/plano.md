@@ -28,10 +28,14 @@ Fechado com o Raul em 2026-11-18 (sessão de grilling). As decisões estão nas 
 - [x] Decisão: Faixa de áudio, idioma (segue a faixa), modelo, dispositivo, Prévia e conversão da imagem.
 - [x] Prévia como primeira etapa; Vídeo legendado com todas as faixas originais.
 
-## Fase 2: transcrição ao vivo
-- [ ] Blocos de 30s com 2s de Sobreposição. Trechos gravados e SRT/VTT parciais a cada Bloco.
-- [ ] `GET /api/jobs/<id>/segments?after=<s>`; a tela busca a cada 5s.
-- [ ] SRT parcial para baixar durante o Job. Vídeo legendado só no fim.
+## Fase 2: transcrição ao vivo (ADR 0003, refinada em 2026-11-19)
+- [ ] Tela com dados simulados validada: progresso por Bloco, SRT parcial e player pausando na Fronteira da transcrição.
+- [ ] Blocos de 30s com 2s de Sobreposição sobre o áudio carregado uma vez; Trechos aceitos só depois da Fronteira; contexto do Bloco anterior.
+- [ ] Idioma do Automático detectado no primeiro Bloco com fala e gravado no Job.
+- [ ] SRT/VTT parciais a cada Bloco; progresso "bloco N de M"; JSON, TXT e Vídeo legendado no fim.
+- [ ] Cancelar ao fim do Bloco ("Cancelando…"); cancelado ou falho mantém Trechos e SRT parcial.
+- [ ] Player: play desde o primeiro Trecho, pausa na Fronteira e retoma com 3s à frente; trilha VTT parcial atualizada.
+- [ ] Teste com vídeo falado real na GPU.
 
 ## Fase 3: Revisão por IA (`ai_revision`, LangChain)
 - [ ] Configurações: Provedor de IA (Anthropic, OpenAI ou Ollama), modelo (texto com sugestão), chave criptografada e mascarada (o `.env` tem prioridade), URL do Ollama e "Testar conexão".

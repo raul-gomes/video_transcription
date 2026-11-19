@@ -20,6 +20,10 @@ _Evite_: chunk, parte, fatia
 Os segundos que um Bloco repete do Bloco anterior para não cortar uma palavra ao meio.
 _Evite_: overlap, margem
 
+**Fronteira da transcrição**:
+O fim do último Trecho já transcrito de um Job em andamento. Trecho novo só entra depois dela, e o player pausa ao alcançá-la.
+_Evite_: horizonte, limite, cursor
+
 **Análise da Mídia**:
 A leitura do arquivo enviado (contêiner, vídeo, Faixas de áudio, legendas embutidas e o que o navegador consegue tocar) feita antes de o Job entrar na fila.
 _Evite_: probe, inspeção, verificação

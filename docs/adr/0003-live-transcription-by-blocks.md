@@ -12,6 +12,17 @@ Refinado no grilling de 2026-11-19, antes da implementação:
 - **Player:** o play fica liberado desde o primeiro Trecho; ao chegar na Fronteira da transcrição ele pausa ("Aguardando a transcrição…") e retoma quando houver pelo menos 3s à frente. Se a pessoa adiantar além da Fronteira, a pausa automática fica desligada até ela voltar para trás dela. A trilha de legenda é trocada pela VTT parcial nova a cada Bloco.
 - **Ordem:** a Prévia continua antes da transcrição, porque o player precisa dela para acompanhar a legenda.
 
+## Achado no teste real (2026-11-19) e correção combinada
+
+Teste com um episódio de 22 min em inglês, na GPU (modelo `small`): primeiros Trechos na tela 44s após confirmar, 48 Blocos em ~70s, idioma detectado certo, sem sobreposição de tempo. Mas em 9 dos 48 cortes o Whisper **repetiu a última frase nos segundos finais do Bloco**, onde o áudio é cortado (ex.: Bloco 224–254s, frase em 249–251s repetida em 251–253s). O Trecho repetido avançava a Fronteira, e o Bloco seguinte descartava a fala real daquele trecho.
+
+Correção aprovada pelo Raul, **ainda não implementada**:
+
+- Cada Bloco começa na Fronteira da transcrição (fim do último Trecho aceito), não numa grade fixa de 28s.
+- Num Bloco que não é o último, os Trechos que terminam nos últimos 3s são descartados e retranscritos pelo Bloco seguinte, que já começa num limite de frase. Se nada terminar antes dessa margem, o Bloco é aceito inteiro, para o Job sempre avançar.
+- Como o total de Blocos deixa de ser conhecido no início, a tela mostra "Transcrevendo… 5:36 de 22:12" e a barra avança pelo tempo transcrito.
+- Teste de regressão reproduzindo a repetição no fim do Bloco; depois, rodar o mesmo episódio de novo e comparar.
+
 ## Consequências
 
 - Os Trechos do banco são a fonte da verdade: Legendas, Revisão e, no futuro, a geração de áudio e a edição durante a reprodução partem deles.

@@ -13,16 +13,19 @@ As fases planejadas estão em `docs/plano.md`. Aqui ficam problemas conhecidos e
 
 ## Infra
 - [ ] Imagem Docker grande (PyTorch com suporte a CUDA): avaliar uma imagem só-CPU menor como opção.
+- [ ] Na máquina do Raul, a coleta de lixo do cache do BuildKit descarta a camada de dependências (~6,5 GB) entre builds, e cada rebuild leva ~10 min. Disco em 82%, 69 GB de imagens recuperáveis: decisão do Raul (fora do projeto).
 - [x] Perfil de GPU testado numa RTX 2060 (6 GB): `small` funciona; `medium` estoura a memória de vídeo com o desktop aberto (o Job falha com mensagem clara).
 - [x] CI só roda quando o repo ficar público (resolvido: repo público em 2026-11-19).
 
 ## Front
 - [x] Ícones do Font Awesome empacotados em `static/vendor/fontawesome/` (antes vinham de CDN). A fonte FKGroteskNeue, carregada de um servidor da Perplexity, foi removida (volta para as fontes do sistema).
-- [ ] Layout em tela estreita (celular) não conferido no navegador.
+- [x] Layout em tela estreita (celular) conferido em 390px (2026-11-19).
 
 ## Pipeline
 - [ ] Cancelar durante o download do modelo deixa um arquivo parcial no cache; o Whisper baixa de novo (confere o checksum), mas a tela não mostra "Baixando modelo…" nessa segunda vez.
-- [ ] Teste de ponta a ponta só com vídeos sem fala (tom puro). Falta conferir a qualidade com um vídeo real falado.
+- [x] Teste com vídeo real falado (episódio de 22 min, GPU, 2026-11-19).
+- [ ] Repetição da última frase no fim dos Blocos (9 de 48 cortes): correção combinada na ADR 0003, a implementar.
+- [ ] Silêncios longos e música: conferir se o Whisper inventa frases ("Pew pew" repetido no fim do episódio).
 
 ## Análise da Mídia
 - [ ] Conversão da imagem na Prévia (HEVC/AV1) testada só com argv simulado; falta um arquivo HEVC real.
